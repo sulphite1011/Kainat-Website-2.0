@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getCarts, saveCarts, getCourses } from '../fileStore.js';
+import { getCarts, saveCarts, getCourses, getUsers } from '../fileStore.js';
 import { requireStudent, getStudentClerkId } from '../auth.js';
 
 export const cartRouter = Router();
@@ -68,6 +68,14 @@ cartRouter.post('/items', requireStudent, async (req: Request, res: Response) =>
     const course = courses.find((c) => c.id === courseId);
     if (!course) {
       res.status(404).json({ error: 'Course not found' });
+      return;
+    }
+
+    // Check if user has already purchased this course
+    const users = await getUsers();
+    const user = users.find((u) => u.clerkUserId === clerkUserId);
+    if (user && Array.isArray(user.purchasedCourseIds) && user.purchasedCourseIds.includes(courseId)) {
+      res.status(400).json({ error: 'You have already purchased this course. You can read it directly from your library!' });
       return;
     }
 

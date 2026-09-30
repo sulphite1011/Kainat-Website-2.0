@@ -8,14 +8,17 @@ import { useNavigate } from 'react-router-dom';
 interface CourseCardProps {
   course: Course;
   onOpenDemo: (course: Course) => void;
+  onOpenReader?: (course: Course) => void;
 }
 
-export const CourseCard: React.FC<CourseCardProps> = ({ course, onOpenDemo }) => {
+export const CourseCard: React.FC<CourseCardProps> = ({ course, onOpenDemo, onOpenReader }) => {
   const { addToCart, items } = useCart();
   const { studentProfile } = useAuth();
   const navigate = useNavigate();
 
-  const isPurchased = studentProfile?.purchasedCourseIds?.includes(course.id) || course.hasPurchased;
+  const isPurchased = Boolean(
+    studentProfile?.purchasedCourseIds?.includes(course.id) || course.hasPurchased
+  );
   const isInCart = items.some((i) => i.courseId === course.id);
 
   const chapterInfo = [
@@ -26,9 +29,17 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course, onOpenDemo }) =>
     .filter(Boolean)
     .join(' • ');
 
+  const handleReadClick = () => {
+    if (onOpenReader) {
+      onOpenReader(course);
+    } else {
+      navigate('/library');
+    }
+  };
+
   return (
     <article className="course-card">
-      <div className="course-card-cover-container">
+      <div className="course-card-cover-container" style={{ position: 'relative' }}>
         {course.coverImageUrl ? (
           <img src={course.coverImageUrl} alt={course.title} className="course-card-cover" />
         ) : (
@@ -38,6 +49,25 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course, onOpenDemo }) =>
           </div>
         )}
         <div className="course-card-badge">{course.class}</div>
+
+        {isPurchased && (
+          <div
+            className="badge badge-verified"
+            style={{
+              position: 'absolute',
+              top: 10,
+              left: 10,
+              zIndex: 3,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+              fontWeight: 700,
+            }}
+          >
+            <CheckCircle2 size={13} /> Owned
+          </div>
+        )}
       </div>
 
       <div className="course-card-body">
@@ -58,8 +88,26 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course, onOpenDemo }) =>
 
         <div className="course-card-footer">
           <div className="course-price">
-            <span className="course-price-label">Price</span>
-            <span className="course-price-amount">Rs. {course.price}</span>
+            {isPurchased ? (
+              <span
+                className="badge badge-verified"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '4px 9px',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                }}
+              >
+                <CheckCircle2 size={14} /> Full Notes Unlocked
+              </span>
+            ) : (
+              <>
+                <span className="course-price-label">Price</span>
+                <span className="course-price-amount">Rs. {course.price}</span>
+              </>
+            )}
           </div>
 
           <div className="course-card-actions">
@@ -76,10 +124,19 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course, onOpenDemo }) =>
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
-                onClick={() => navigate('/library')}
-                style={{ backgroundColor: 'var(--accent-green)' }}
+                onClick={handleReadClick}
+                style={{
+                  backgroundColor: 'var(--accent-green)',
+                  borderColor: 'var(--accent-green)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontWeight: 600,
+                  padding: '6px 14px',
+                }}
+                title="Read Complete Verified Notes"
               >
-                <CheckCircle2 size={15} /> Read
+                <BookOpen size={15} /> Read Notes
               </button>
             ) : isInCart ? (
               <button

@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShieldAlert, ShoppingBag, Lock, BookOpen } from 'lucide-react';
+import { X, ShieldAlert, ShoppingBag, Lock, BookOpen, CheckCircle2 } from 'lucide-react';
 import { api } from '../services/api';
 import { DocumentResponse } from '../types';
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 
 interface PdfViewerModalProps {
   courseId: string;
   courseTitle: string;
-  isPaidMode: boolean; // true = load protected paid document; false = sample preview
+  isPaidMode: boolean; // default mode to open
   samplePdfUrl?: string;
   onClose: () => void;
   onOpenCheckout?: () => void;
@@ -21,10 +22,24 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
   onClose,
 }) => {
   const { addToCart } = useCart();
+  const { studentProfile } = useAuth();
+
+  const isPurchased = Boolean(studentProfile?.purchasedCourseIds?.includes(courseId));
+  const [currentMode, setCurrentMode] = useState<'sample' | 'paid'>(
+    isPaidMode || isPurchased ? (isPaidMode ? 'paid' : 'sample') : 'sample'
+  );
+
   const [docData, setDocData] = useState<DocumentResponse | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(isPaidMode);
+  const [isLoading, setIsLoading] = useState<boolean>(currentMode === 'paid');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isTabBlurred, setIsTabBlurred] = useState<boolean>(false);
+
+  // Sync mode when prop changes
+  useEffect(() => {
+    if (isPaidMode) {
+      setCurrentMode('paid');
+    }
+  }, [isPaidMode]);
 
   // Best effort security deterrent: blur viewer on tab switch or visibility hidden
   useEffect(() => {
@@ -54,8 +69,9 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
 
   // If paid mode, load from protected backend endpoint
   useEffect(() => {
-    if (isPaidMode) {
+    if (currentMode === 'paid') {
       setIsLoading(true);
+      setErrorMessage(null);
       api
         .getCourseDocument(courseId)
         .then((res) => {
@@ -67,11 +83,11 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
           setIsLoading(false);
         });
     }
-  }, [courseId, isPaidMode]);
+  }, [courseId, currentMode]);
 
   // Determine which PDF URL to display
   let pdfUrlToDisplay = '';
-  if (isPaidMode) {
+  if (currentMode === 'paid') {
     pdfUrlToDisplay = docData?.fullPdfUrl || '';
   } else {
     pdfUrlToDisplay = samplePdfUrl || '';
@@ -80,7 +96,6 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
   // Helper to construct embed-friendly URL (handling Google Drive preview links if provided)
   const getEmbeddablePdfUrl = (rawUrl: string) => {
     if (!rawUrl) return '';
-    // If it's a Google Drive link, convert to preview embed URL
     if (rawUrl.includes('drive.google.com') && rawUrl.includes('/view')) {
       return rawUrl.replace('/view', '/preview');
     }
@@ -97,9 +112,9 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
       {/* Header */}
       <div className="pdf-viewer-header">
         <div className="pdf-viewer-title">
-          {isPaidMode ? (
+          {currentMode === 'paid' ? (
             <span style={{ color: 'var(--accent-green)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <BookOpen size={20} /> Verified Notes Reader
+              <BookOpen size={20} /> Verified Full Notes Reader
             </span>
           ) : (
             <span style={{ color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -112,16 +127,52 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {!isPaidMode && (
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => {
-                addToCart(courseId);
-                onClose();
+          {currentMode === 'sample' ? (
+            isPurchased ? (
+              <button
+                type="button"
+                className="btn btn-sm"
+                style={{
+                  backgroundColor: 'var(--accent-green)',
+                  borderColor: 'var(--accent-green)',
+                  color: '#ffffff',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontWeight: 600,
+                  padding: '6px 14px',
+                }}
+                onClick={() => setCurrentMode('paid')}
+                title="Switch to complete verified notes"
+              >
+                <BookOpen size={14} /> Read Full Notes (Unlocked)
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  addToCart(courseId);
+                  onClose();
+                }}
+              >
+                <ShoppingBag size={14} /> Buy Full Notes
+              </button>
+            )
+          ) : (
+            <span
+              className="badge badge-verified"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '5px 10px',
+                fontSize: '0.8rem',
+                fontWeight: 600,
               }}
             >
-              <ShoppingBag size={14} /> Buy Full Notes
-            </button>
+              <CheckCircle2 size={14} /> Verified License Active
+            </span>
           )}
 
           <button className="modal-close-btn" onClick={onClose} aria-label="Close Reader">
@@ -148,15 +199,38 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
             </div>
             <div className="empty-state-title">Access Restricted</div>
             <div className="empty-state-desc">{errorMessage}</div>
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                addToCart(courseId);
-                onClose();
-              }}
-            >
-              <ShoppingBag size={16} /> Purchase Course Access
-            </button>
+            {isPurchased ? (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  setIsLoading(true);
+                  setErrorMessage(null);
+                  api.getCourseDocument(courseId)
+                    .then((res) => {
+                      setDocData(res);
+                      setIsLoading(false);
+                    })
+                    .catch((err) => {
+                      setErrorMessage(err.message || 'Authorization failed');
+                      setIsLoading(false);
+                    });
+                }}
+              >
+                Retry Loading Document
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  addToCart(courseId);
+                  onClose();
+                }}
+              >
+                <ShoppingBag size={16} /> Purchase Course Access
+              </button>
+            )}
           </div>
         )}
 
@@ -171,7 +245,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
             />
 
             {/* Subtle Diagonal Watermark Layer for Verified Student */}
-            {isPaidMode && docData?.watermark && (
+            {currentMode === 'paid' && docData?.watermark && (
               <div className="watermark-layer" aria-hidden="true">
                 {[...Array(12)].map((_, idx) => (
                   <div key={idx} className="watermark-item">

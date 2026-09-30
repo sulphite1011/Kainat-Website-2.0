@@ -14,6 +14,17 @@ courseRouter.get('/', async (req: Request, res: Response) => {
     const isAdmin = authHeader?.startsWith('Bearer adm_');
     const courses = await getCourses();
 
+    // Check if requester has purchased any courses
+    const clerkUserId = await getStudentClerkId(req);
+    let purchasedCourseIds = new Set<string>();
+    if (clerkUserId) {
+      const users = await getUsers();
+      const user = users.find((u) => u.clerkUserId === clerkUserId);
+      if (user && Array.isArray(user.purchasedCourseIds)) {
+        purchasedCourseIds = new Set(user.purchasedCourseIds);
+      }
+    }
+
     // Mask the fullPdfUrl from the catalog list so it is never leaked
     const sanitized = courses
       .filter((c) => (isAdmin ? true : c.isPublished))
@@ -23,6 +34,7 @@ courseRouter.get('/', async (req: Request, res: Response) => {
         return {
           ...safeCourse,
           hasFullPdf: Boolean(fullPdfUrl && fullPdfUrl.trim().length > 0),
+          hasPurchased: purchasedCourseIds.has(c.id),
         };
       });
 

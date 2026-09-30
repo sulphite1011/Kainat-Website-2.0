@@ -6,16 +6,21 @@ import { EmptySection } from '../components/EmptySection';
 import { PdfViewerModal } from '../components/PdfViewerModal';
 import { Course, SiteSettings } from '../types';
 import { api } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 interface HomeProps {
   settings: SiteSettings;
 }
 
 export const Home: React.FC<HomeProps> = ({ settings }) => {
+  const { refreshStudentProfile } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedSection, setSelectedSection] = useState<string>('All Courses');
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [previewCourse, setPreviewCourse] = useState<Course | null>(null);
+  const [activeReader, setActiveReader] = useState<{
+    course: Course;
+    isPaidMode: boolean;
+  } | null>(null);
 
   const fetchCourses = useCallback(async () => {
     try {
@@ -31,13 +36,17 @@ export const Home: React.FC<HomeProps> = ({ settings }) => {
   useEffect(() => {
     fetchCourses();
 
-    // Setup Server-Sent Events listener for real-time catalog sync
+    // Setup Server-Sent Events listener for real-time catalog & purchase sync
     let eventSource: EventSource | null = null;
     try {
       eventSource = new EventSource('/api/events');
       eventSource.addEventListener('COURSE_CREATED', () => fetchCourses());
       eventSource.addEventListener('COURSE_UPDATED', () => fetchCourses());
       eventSource.addEventListener('COURSE_DELETED', () => fetchCourses());
+      eventSource.addEventListener('ORDER_VERIFIED', () => {
+        fetchCourses();
+        refreshStudentProfile();
+      });
     } catch (err) {
       console.warn('SSE not supported or failed to connect:', err);
     }
@@ -45,7 +54,7 @@ export const Home: React.FC<HomeProps> = ({ settings }) => {
     return () => {
       eventSource?.close();
     };
-  }, [fetchCourses]);
+  }, [fetchCourses, refreshStudentProfile]);
 
   const filteredCourses = selectedSection === 'All Courses'
     ? courses
@@ -84,21 +93,22 @@ export const Home: React.FC<HomeProps> = ({ settings }) => {
               <CourseCard
                 key={course.id}
                 course={course}
-                onOpenDemo={(c) => setPreviewCourse(c)}
+                onOpenDemo={(c) => setActiveReader({ course: c, isPaidMode: false })}
+                onOpenReader={(c) => setActiveReader({ course: c, isPaidMode: true })}
               />
             ))}
           </div>
         )}
       </main>
 
-      {/* Sample PDF Demo Reader */}
-      {previewCourse && (
+      {/* PDF Reader Modal (Supports both Demo Preview and Full Verified Reader) */}
+      {activeReader && (
         <PdfViewerModal
-          courseId={previewCourse.id}
-          courseTitle={previewCourse.title}
-          isPaidMode={false}
-          samplePdfUrl={previewCourse.samplePdfUrl}
-          onClose={() => setPreviewCourse(null)}
+          courseId={activeReader.course.id}
+          courseTitle={activeReader.course.title}
+          isPaidMode={activeReader.isPaidMode}
+          samplePdfUrl={activeReader.course.samplePdfUrl}
+          onClose={() => setActiveReader(null)}
         />
       )}
     </div>

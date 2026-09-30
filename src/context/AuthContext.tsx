@@ -115,6 +115,28 @@ export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ chi
         .getNotifications()
         .then(setNotifications)
         .catch(() => {});
+
+      // Setup real-time listener for order verification
+      let eventSource: EventSource | null = null;
+      try {
+        eventSource = new EventSource('/api/events');
+        eventSource.addEventListener('ORDER_VERIFIED', (e: any) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (!data.clerkUserId || data.clerkUserId === effectiveUserId) {
+              refreshStudentProfile();
+            }
+          } catch {
+            refreshStudentProfile();
+          }
+        });
+      } catch (err) {
+        console.warn('SSE auth listener error:', err);
+      }
+
+      return () => {
+        eventSource?.close();
+      };
     } else {
       setStudentProfile(null);
       setNotifications([]);
