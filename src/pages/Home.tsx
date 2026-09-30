@@ -76,6 +76,7 @@ export const Home: React.FC<HomeProps> = ({ settings }) => {
         <AcademicFilter
           selectedSection={selectedSection}
           onSelectSection={(section) => setSelectedSection(section)}
+          customClasses={settings.customClasses}
         />
 
         {/* Course Grid or Empty State */}

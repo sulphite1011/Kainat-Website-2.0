@@ -4,18 +4,27 @@ import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { api } from '../services/api';
-import { Order } from '../types';
+import { Order, SiteSettings } from '../types';
 
 interface CheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOrderSuccess: (order: Order) => void;
+  settings?: SiteSettings;
 }
 
-export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, onOrderSuccess }) => {
+export const CheckoutModal: React.FC<CheckoutModalProps> = ({
+  isOpen,
+  onClose,
+  onOrderSuccess,
+  settings,
+}) => {
   const { items, totalAmount, clearCart } = useCart();
   const { studentName, studentEmail } = useAuth();
   const { showToast } = useToast();
+
+  const easyPaisaNum = settings?.easyPaisaNumber || '03415892099';
+  const easyPaisaName = settings?.easyPaisaTitle || 'Kainat Educational Services';
 
   const [transactionId, setTransactionId] = useState<string>('');
   const [proofFile, setProofFile] = useState<File | null>(null);
@@ -27,7 +36,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
   if (!isOpen) return null;
 
   const handleCopyEasyPaisa = () => {
-    navigator.clipboard.writeText('03415892099');
+    navigator.clipboard.writeText(easyPaisaNum);
     setCopiedNumber(true);
     showToast('EasyPaisa number copied to clipboard', 'info');
     setTimeout(() => setCopiedNumber(false), 2500);
@@ -123,7 +132,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>EasyPaisa Account:</span>
-                <span style={{ fontWeight: 700, color: 'var(--accent-green)' }}>Kainat Educational Services</span>
+                <span style={{ fontWeight: 700, color: 'var(--accent-green)' }}>{easyPaisaName}</span>
               </div>
 
               <div
@@ -138,7 +147,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
                 }}
               >
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1.25rem', fontWeight: 700, letterSpacing: '0.05em' }}>
-                  03415892099
+                  {easyPaisaNum}
                 </span>
                 <button
                   type="button"

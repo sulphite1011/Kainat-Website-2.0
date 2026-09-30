@@ -94,6 +94,7 @@ export interface SiteSettings {
   contactEmail: string;
   footerText: string;
   currency: string;
+  customClasses?: string[];
 }
 
 export interface AdminStats {

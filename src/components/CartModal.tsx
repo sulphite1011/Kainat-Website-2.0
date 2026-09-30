@@ -2,15 +2,21 @@ import React, { useState } from 'react';
 import { X, Trash2, ShoppingBag, ArrowRight } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { CheckoutModal } from './CheckoutModal';
-import { Order } from '../types';
+import { Order, SiteSettings } from '../types';
 
 interface CartModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOrderSuccess: (order: Order) => void;
+  settings?: SiteSettings;
 }
 
-export const CartModal: React.FC<CartModalProps> = ({ isOpen, onClose, onOrderSuccess }) => {
+export const CartModal: React.FC<CartModalProps> = ({
+  isOpen,
+  onClose,
+  onOrderSuccess,
+  settings,
+}) => {
   const { items, totalAmount, removeFromCart, clearCart, isLoading } = useCart();
   const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false);
 
@@ -130,6 +136,7 @@ export const CartModal: React.FC<CartModalProps> = ({ isOpen, onClose, onOrderSu
         <CheckoutModal
           isOpen={isCheckoutOpen}
           onClose={() => setIsCheckoutOpen(false)}
+          settings={settings}
           onOrderSuccess={(order) => {
             setIsCheckoutOpen(false);
             onClose();

@@ -1,0 +1,19 @@
+{
+  "siteName": "Kainat Notes Hub 2",
+  "logoUrl": "/storage/logos/1790787940466_bd9a2165ae444cd7.png",
+  "easyPaisaNumber": "03415892099",
+  "easyPaisaTitle": "Kainat Educational Services",
+  "whatsAppNumber": "0324 9059918",
+  "contactEmail": "support@kainatnoteshub.com",
+  "footerText": "© 2026 Kainat Notes Hub. All Rights Reserved. Verified Educational Notes for Board Exams.",
+  "currency": "PKR",
+  "customClasses": [
+    "Matric 9th",
+    "Matric 10th",
+    "FSc Pre-Medical",
+    "FSc Pre-Engineering",
+    "ICS",
+    "I.Com",
+    "BSc / BS"
+  ]
+}

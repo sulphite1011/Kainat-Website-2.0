@@ -67,6 +67,23 @@ export const api = {
     return handleResponse(res);
   },
 
+  async addCustomClass(className: string): Promise<{ success: boolean; settings: SiteSettings; className: string }> {
+    const res = await fetch('/api/settings/classes', {
+      method: 'POST',
+      headers: getHeaders(true),
+      body: JSON.stringify({ className }),
+    });
+    return handleResponse(res);
+  },
+
+  async deleteCustomClass(className: string): Promise<{ success: boolean; settings: SiteSettings }> {
+    const res = await fetch(`/api/settings/classes/${encodeURIComponent(className)}`, {
+      method: 'DELETE',
+      headers: getHeaders(true),
+    });
+    return handleResponse(res);
+  },
+
   // Courses
   async getCourses(): Promise<Course[]> {
     const res = await fetch('/api/courses', {

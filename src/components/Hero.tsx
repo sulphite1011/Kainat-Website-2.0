@@ -16,34 +16,22 @@ export const Hero: React.FC<HeroProps> = ({ settings }) => {
           </div>
 
           <h1 className="hero-title">
-            Master Your Board Exams With <span>Kainat Notes Hub</span>
+            Master Your Board Exams With <span>{settings.siteName || 'Kainat Notes Hub'}</span>
           </h1>
 
           <p className="hero-subtitle">
-            Comprehensive chapter-wise summaries, solved numericals, and board-pattern questions for Matric, FSc, and BSc students.
+            Comprehensive chapter-wise summaries, solved numericals, and board-pattern questions for all classes and faculties.
           </p>
 
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 20,
-              flexWrap: 'wrap',
-              justifyContent: 'center',
-              fontSize: '0.85rem',
-              color: 'var(--text-muted)',
-              backgroundColor: 'var(--bg-secondary)',
-              padding: '10px 20px',
-              borderRadius: 'var(--radius-full)',
-              border: '1px solid var(--border-subtle)',
-            }}
-          >
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <ShieldCheck size={16} color="var(--accent-green)" /> EasyPaisa Verified: {settings.easyPaisaNumber}
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <BookOpen size={16} color="var(--primary)" /> Instant Access to Verified Library
-            </span>
+          <div className="hero-highlights">
+            <div className="hero-highlight-item">
+              <ShieldCheck size={16} color="var(--accent-green)" />
+              <span>EasyPaisa Verified: <strong>{settings.easyPaisaNumber || '03415892099'}</strong></span>
+            </div>
+            <div className="hero-highlight-item">
+              <BookOpen size={16} color="var(--primary)" />
+              <span>Instant Access to Protected Notes</span>
+            </div>
           </div>
         </div>
       </div>

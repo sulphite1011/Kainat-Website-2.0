@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -17,6 +17,7 @@ import {
   Upload,
   RefreshCw,
   ExternalLink,
+  Layers,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -57,6 +58,74 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ settings, onSettingsUp
   // Settings form state
   const [formSettings, setFormSettings] = useState<SiteSettings>(settings);
   const [isSavingSettings, setIsSavingSettings] = useState<boolean>(false);
+
+  // Custom class level state
+  const [isAddingCustomClass, setIsAddingCustomClass] = useState<boolean>(false);
+  const [newCustomClassName, setNewCustomClassName] = useState<string>('');
+  const [isSavingCustomClass, setIsSavingCustomClass] = useState<boolean>(false);
+
+  // Computed list of all available class levels (combining defaults, settings, and courses)
+  const availableClasses = useMemo(() => {
+    const defaultClasses = [
+      'Matric 9th',
+      'Matric 10th',
+      'FSc Pre-Medical',
+      'FSc Pre-Engineering',
+      'ICS',
+      'I.Com',
+      'BSc / BS',
+    ];
+    const set = new Set<string>(defaultClasses);
+    if (settings.customClasses && Array.isArray(settings.customClasses)) {
+      settings.customClasses.forEach((c) => c && set.add(c.trim()));
+    }
+    if (formSettings.customClasses && Array.isArray(formSettings.customClasses)) {
+      formSettings.customClasses.forEach((c) => c && set.add(c.trim()));
+    }
+    courses.forEach((c) => {
+      if (c.class && c.class.trim()) set.add(c.class.trim());
+    });
+    return Array.from(set).filter(Boolean);
+  }, [settings.customClasses, formSettings.customClasses, courses]);
+
+  const handleSaveNewCustomClass = async () => {
+    if (!newCustomClassName.trim()) {
+      showToast('Please enter a valid class name', 'error');
+      return;
+    }
+    const trimmed = newCustomClassName.trim();
+    try {
+      setIsSavingCustomClass(true);
+      const res = await api.addCustomClass(trimmed);
+      if (res.settings) {
+        onSettingsUpdated(res.settings);
+        setFormSettings(res.settings);
+      }
+      if (editingCourse) {
+        setEditingCourse((prev) => (prev ? { ...prev, class: trimmed } : null));
+      }
+      setNewCustomClassName('');
+      setIsAddingCustomClass(false);
+      showToast(`Class "${trimmed}" saved to dropdown for future courses!`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to save custom class', 'error');
+    } finally {
+      setIsSavingCustomClass(false);
+    }
+  };
+
+  const handleDeleteCustomClass = async (classNameToDelete: string) => {
+    try {
+      const res = await api.deleteCustomClass(classNameToDelete);
+      if (res.settings) {
+        onSettingsUpdated(res.settings);
+        setFormSettings(res.settings);
+      }
+      showToast(`Class "${classNameToDelete}" removed from dropdown list`, 'info');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to remove class', 'error');
+    }
+  };
 
   // Course cover upload ref
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -784,6 +853,100 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ settings, onSettingsUp
               {isSavingSettings ? 'Saving Settings...' : 'Save Settings to Server'}
             </button>
           </form>
+
+          {/* Academic Class Levels Management */}
+          <div
+            style={{
+              backgroundColor: 'var(--bg-card)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-lg)',
+              padding: '24px',
+              marginTop: '24px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <Layers size={20} color="var(--primary)" />
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Customized Class Levels</h3>
+            </div>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 16 }}>
+              These class levels appear in the course creation dropdown and the homepage filter tabs.
+              Custom classes are saved permanently on the server for all future courses.
+            </p>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
+              {availableClasses.map((cls) => {
+                const isDefault = [
+                  'Matric 9th',
+                  'Matric 10th',
+                  'FSc Pre-Medical',
+                  'FSc Pre-Engineering',
+                  'ICS',
+                  'I.Com',
+                  'BSc / BS',
+                ].includes(cls);
+
+                return (
+                  <span
+                    key={cls}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '6px 12px',
+                      backgroundColor: 'var(--bg-tertiary)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-full)',
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                    }}
+                  >
+                    <span>{cls}</span>
+                    {!isDefault && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCustomClass(cls)}
+                        title={`Remove "${cls}" from class list`}
+                        style={{
+                          color: 'var(--accent-red)',
+                          padding: 2,
+                          lineHeight: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <XCircle size={14} />
+                      </button>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Enter new class (e.g. O Levels, A Levels, MDCAT, ECAT)"
+                value={newCustomClassName}
+                onChange={(e) => setNewCustomClassName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSaveNewCustomClass();
+                  }
+                }}
+                style={{ maxWidth: 360 }}
+              />
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={handleSaveNewCustomClass}
+                disabled={isSavingCustomClass || !newCustomClassName.trim()}
+              >
+                <Plus size={14} /> Add Class Level
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -818,20 +981,81 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ settings, onSettingsUp
 
                 <div className="form-grid-2">
                   <div className="form-group">
-                    <label className="form-label">
-                      Class Level <span className="req">*</span>
-                    </label>
-                    <select
-                      className="form-select"
-                      value={editingCourse.class || 'Matric 9th'}
-                      onChange={(e) => setEditingCourse({ ...editingCourse, class: e.target.value })}
-                    >
-                      <option value="Matric 9th">Matric 9th</option>
-                      <option value="Matric 10th">Matric 10th</option>
-                      <option value="FSc Part 1">FSc Part 1</option>
-                      <option value="FSc Part 2">FSc Part 2</option>
-                      <option value="BSc / BS">BSc / BS</option>
-                    </select>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <label className="form-label" style={{ margin: 0 }}>
+                        Class Level <span className="req">*</span>
+                      </label>
+                      {!isAddingCustomClass && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => setIsAddingCustomClass(true)}
+                          style={{ fontSize: '0.78rem', color: 'var(--primary)', padding: '2px 6px', fontWeight: 600 }}
+                        >
+                          + Add Custom Class
+                        </button>
+                      )}
+                    </div>
+
+                    {!isAddingCustomClass ? (
+                      <select
+                        className="form-select"
+                        value={editingCourse.class || availableClasses[0] || 'Matric 9th'}
+                        onChange={(e) => {
+                          if (e.target.value === '__ADD_CUSTOM__') {
+                            setIsAddingCustomClass(true);
+                          } else {
+                            setEditingCourse({ ...editingCourse, class: e.target.value });
+                          }
+                        }}
+                      >
+                        {availableClasses.map((cls) => (
+                          <option key={cls} value={cls}>
+                            {cls}
+                          </option>
+                        ))}
+                        <option value="__ADD_CUSTOM__" style={{ fontWeight: 700, color: 'var(--primary)' }}>
+                          + Add Customized Class...
+                        </option>
+                      </select>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                        <input
+                          type="text"
+                          className="form-input"
+                          placeholder="e.g. O Levels, A Levels, MDCAT, ECAT, BS CS"
+                          value={newCustomClassName}
+                          onChange={(e) => setNewCustomClassName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleSaveNewCustomClass();
+                            }
+                          }}
+                          autoFocus
+                          style={{ flex: 1 }}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={handleSaveNewCustomClass}
+                          disabled={isSavingCustomClass || !newCustomClassName.trim()}
+                          style={{ whiteSpace: 'nowrap' }}
+                        >
+                          {isSavingCustomClass ? 'Saving...' : 'Save & Select'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => {
+                            setIsAddingCustomClass(false);
+                            setNewCustomClassName('');
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="form-group">

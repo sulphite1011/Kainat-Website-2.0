@@ -59,9 +59,23 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({
             </div>
             <h3 className="modal-title">Student Google Login</h3>
           </div>
-          <button className="modal-close-btn" onClick={onClose} aria-label="Close">
-            <X size={20} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {isIframe && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={handleOpenStandalone}
+                title="Open in dedicated tab"
+                style={{ padding: '6px', color: 'var(--text-muted)' }}
+                aria-label="Open in dedicated tab"
+              >
+                <ExternalLink size={18} />
+              </button>
+            )}
+            <button className="modal-close-btn" onClick={onClose} aria-label="Close">
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         <div className="modal-body" style={{ padding: '24px 20px' }}>
@@ -78,36 +92,6 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({
               }}
             >
               Signing in will automatically add <strong>{pendingCourseTitle}</strong> to your cart.
-            </div>
-          )}
-
-          {isIframe && (
-            <div
-              style={{
-                backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                border: '1px solid rgba(245, 158, 11, 0.3)',
-                borderRadius: 'var(--radius-md)',
-                padding: '12px 14px',
-                fontSize: '0.82rem',
-                marginBottom: 16,
-                color: 'var(--accent-gold)',
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 8,
-              }}
-            >
-              <div style={{ flex: 1 }}>
-                <strong>Preview Iframe Notice:</strong> Google OAuth restricts being displayed inside embedded editor
-                iframes. For real Google authentication, open the site in a dedicated tab.
-              </div>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={handleOpenStandalone}
-                style={{ padding: '4px 8px', fontSize: '0.75rem', whiteSpace: 'nowrap' }}
-              >
-                <ExternalLink size={12} /> Open Tab
-              </button>
             </div>
           )}
 

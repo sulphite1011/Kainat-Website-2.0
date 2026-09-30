@@ -25,6 +25,7 @@ const DEFAULT_SETTINGS: SiteSettings = {
   contactEmail: 'support@kainatnoteshub.com',
   footerText: '© 2026 Kainat Notes Hub. All Rights Reserved. Verified Educational Notes for Board Exams.',
   currency: 'PKR',
+  customClasses: ['Matric 9th', 'Matric 10th', 'FSc Pre-Medical', 'FSc Pre-Engineering', 'ICS', 'I.Com', 'BSc / BS'],
 };
 
 // Safe atomic write helper: write to temp file then rename
