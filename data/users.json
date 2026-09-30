@@ -1,0 +1,13 @@
+[
+  {
+    "clerkUserId": "user_test_123",
+    "name": "Test Student",
+    "email": "test@example.com",
+    "avatarUrl": "",
+    "purchasedCourseIds": [
+      "crs_matric9_phy_u1"
+    ],
+    "createdAt": "2026-09-30T15:53:40.110Z",
+    "updatedAt": "2026-09-30T15:54:05.544Z"
+  }
+]

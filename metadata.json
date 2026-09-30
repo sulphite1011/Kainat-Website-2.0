@@ -1,0 +1,6 @@
+{
+  "name": "Kainat Notes Hub",
+  "description": "Production educational marketplace for verified curriculum notes, past papers, and chapter summaries with single source of truth server storage.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

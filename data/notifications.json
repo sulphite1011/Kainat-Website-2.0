@@ -1,0 +1,20 @@
+[
+  {
+    "id": "notif_1790783645545",
+    "clerkUserId": "user_test_123",
+    "title": "Order Verified! Notes Unlocked",
+    "message": "Your payment for order KH-20260930-8OZWM has been verified. You can now access your notes in \"My Library\".",
+    "type": "order_verified",
+    "isRead": false,
+    "createdAt": "2026-09-30T15:54:05.545Z"
+  },
+  {
+    "id": "notif_1790783620145",
+    "clerkUserId": "user_test_123",
+    "title": "Order Placed (Verification Pending)",
+    "message": "Your order KH-20260930-8OZWM of Rs. 350 is under admin review. You will receive immediate access once verified.",
+    "type": "general",
+    "isRead": false,
+    "createdAt": "2026-09-30T15:53:40.145Z"
+  }
+]

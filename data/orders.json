@@ -1,0 +1,27 @@
+[
+  {
+    "id": "KH-20260930-8OZWM",
+    "clerkUserId": "user_test_123",
+    "studentName": "Test Student",
+    "studentEmail": "test@example.com",
+    "courseIds": [
+      "crs_matric9_phy_u1"
+    ],
+    "coursesSummary": [
+      {
+        "id": "crs_matric9_phy_u1",
+        "title": "Physics Chapter 1: Physical Quantities & Measurement",
+        "price": 350,
+        "class": "Matric 9th"
+      }
+    ],
+    "totalAmount": 350,
+    "paymentMethod": "EasyPaisa",
+    "transactionId": "EP-998877",
+    "paymentProofUrl": "",
+    "status": "VERIFIED",
+    "createdAt": "2026-09-30T15:53:40.142Z",
+    "updatedAt": "2026-09-30T15:54:05.542Z",
+    "adminNotes": "Payment verified by administrator."
+  }
+]
