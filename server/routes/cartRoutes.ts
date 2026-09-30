@@ -1,13 +1,25 @@
 import { Router, Request, Response } from 'express';
 import { getCarts, saveCarts, getCourses } from '../fileStore.js';
-import { requireStudent } from '../auth.js';
+import { requireStudent, getStudentClerkId } from '../auth.js';
 
 export const cartRouter = Router();
 
 // GET /api/cart
-cartRouter.get('/', requireStudent, async (req: Request, res: Response) => {
+// If student is authenticated, returns their server-stored cart.
+// If unauthenticated guest, returns empty cart without throwing 401.
+cartRouter.get('/', async (req: Request, res: Response) => {
   try {
-    const clerkUserId = (req as any).clerkUserId;
+    const clerkUserId = await getStudentClerkId(req);
+    if (!clerkUserId) {
+      res.json({
+        clerkUserId: '',
+        items: [],
+        totalAmount: 0,
+        totalItems: 0,
+      });
+      return;
+    }
+
     const carts = await getCarts();
     const userCart = carts[clerkUserId] || { items: [] };
 

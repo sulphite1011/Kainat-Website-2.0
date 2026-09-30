@@ -48,6 +48,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ settings, onSettingsUp
   const [isCourseModalOpen, setIsCourseModalOpen] = useState<boolean>(false);
   const [editingCourse, setEditingCourse] = useState<Partial<Course> | null>(null);
   const [selectedProofUrl, setSelectedProofUrl] = useState<string | null>(null);
+  const [deleteConfirmCourse, setDeleteConfirmCourse] = useState<{ id: string; title: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [rejectModalOrder, setRejectModalOrder] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState<string>('Transaction could not be verified or reference not found');
+  const [isRejecting, setIsRejecting] = useState<boolean>(false);
 
   // Settings form state
   const [formSettings, setFormSettings] = useState<SiteSettings>(settings);
@@ -130,15 +135,42 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ settings, onSettingsUp
     }
   };
 
-  const handleRejectOrder = async (orderId: string) => {
-    const reason = window.prompt('Enter reason for rejection (optional):', 'Transaction not found or invalid');
-    if (reason === null) return; // user cancelled prompt
+  const handleRejectOrder = (orderId: string) => {
+    setRejectModalOrder(orderId);
+    setRejectReason('Transaction could not be verified or reference not found');
+  };
+
+  const handleConfirmReject = async () => {
+    if (!rejectModalOrder) return;
     try {
-      await api.rejectOrder(orderId, reason || 'Transaction could not be verified');
-      showToast(`Order ${orderId} marked as rejected`, 'info');
-      loadData();
+      setIsRejecting(true);
+      await api.rejectOrder(rejectModalOrder, rejectReason);
+      showToast(`Order ${rejectModalOrder} marked as rejected`, 'info');
+      setRejectModalOrder(null);
+      await loadData();
     } catch (err: any) {
       showToast(err.message || 'Rejection failed', 'error');
+    } finally {
+      setIsRejecting(false);
+    }
+  };
+
+  const handleDeleteCourse = (courseId: string, title: string) => {
+    setDeleteConfirmCourse({ id: courseId, title });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmCourse) return;
+    try {
+      setIsDeleting(true);
+      await api.deleteCourse(deleteConfirmCourse.id);
+      showToast(`Course "${deleteConfirmCourse.title}" deleted from server`, 'info');
+      setDeleteConfirmCourse(null);
+      await loadData();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete course', 'error');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -189,20 +221,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ settings, onSettingsUp
     }
   };
 
-  // Delete Course
-  const handleDeleteCourse = async (courseId: string, title: string) => {
-    if (!window.confirm(`Are you sure you want to permanently delete "${title}"? This cannot be undone.`)) {
-      return;
-    }
 
-    try {
-      await api.deleteCourse(courseId);
-      showToast('Course deleted from server', 'info');
-      loadData();
-    } catch (err: any) {
-      showToast(err.message || 'Failed to delete course', 'error');
-    }
-  };
 
   // Save Settings
   const handleSaveSettings = async (e: React.FormEvent) => {
@@ -1036,6 +1055,118 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ settings, onSettingsUp
             onSettingsUpdated({ ...settings, logoUrl: newLogoUrl });
           }}
         />
+      )}
+
+      {/* In-App Course Delete Confirmation Dialog */}
+      {deleteConfirmCourse && (
+        <div className="modal-backdrop" onClick={() => !isDeleting && setDeleteConfirmCourse(null)}>
+          <div className="modal-content" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ color: 'var(--accent-red)' }}>
+                Delete Course
+              </h3>
+              <button
+                className="modal-close-btn"
+                onClick={() => !isDeleting && setDeleteConfirmCourse(null)}
+                disabled={isDeleting}
+              >
+                &times;
+              </button>
+            </div>
+            <div className="modal-body">
+              <p style={{ marginBottom: 12 }}>
+                Are you sure you want to permanently delete:
+              </p>
+              <div
+                style={{
+                  padding: '10px 14px',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  borderRadius: 'var(--radius-sm)',
+                  fontWeight: 600,
+                  marginBottom: 14,
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                {deleteConfirmCourse.title}
+              </div>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                This course will be deleted directly from the server database (<code>courses.json</code>)
+                and will disappear immediately for every student across all devices and browsers.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setDeleteConfirmCourse(null)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting Course...' : 'Permanently Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Order Reject Confirmation Dialog */}
+      {rejectModalOrder && (
+        <div className="modal-backdrop" onClick={() => !isRejecting && setRejectModalOrder(null)}>
+          <div className="modal-content" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title" style={{ color: 'var(--accent-red)' }}>
+                Reject Order {rejectModalOrder}
+              </h3>
+              <button
+                className="modal-close-btn"
+                onClick={() => !isRejecting && setRejectModalOrder(null)}
+                disabled={isRejecting}
+              >
+                &times;
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Reason for Rejection</label>
+                <textarea
+                  className="form-textarea"
+                  rows={3}
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="e.g. Transaction ID not found or screenshot unclear"
+                />
+                <div className="form-help">
+                  The student will be notified of this reason in their notifications.
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setRejectModalOrder(null)}
+                disabled={isRejecting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={handleConfirmReject}
+                disabled={isRejecting}
+              >
+                {isRejecting ? 'Rejecting...' : 'Confirm Reject Order'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

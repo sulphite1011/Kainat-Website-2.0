@@ -13,6 +13,7 @@ import { CartProvider } from './context/CartContext';
 import { SiteSettings, Order } from './types';
 import { api } from './services/api';
 import { CheckCircle2, BookOpen, X } from 'lucide-react';
+import { AuthenticateWithRedirectCallback } from '@clerk/clerk-react';
 
 const DEFAULT_SETTINGS: SiteSettings = {
   siteName: 'Kainat Notes Hub',
@@ -83,6 +84,7 @@ function AppContent() {
           <Route path="/library" element={<Library />} />
           <Route path="/admin" element={<AdminPortal settings={settings} onSettingsUpdated={setSettings} />} />
           <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/sso-callback" element={<AuthenticateWithRedirectCallback />} />
         </Routes>
       </div>
 

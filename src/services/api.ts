@@ -22,13 +22,14 @@ export const setAuthAdminToken = (token: string | null) => {
 
 export const getAuthAdminToken = () => currentAdminToken;
 
-const getHeaders = (isJson = true): HeadersInit => {
+const getHeaders = (isJson = true, overrideUserId?: string): HeadersInit => {
   const headers: Record<string, string> = {};
   if (isJson) {
     headers['Content-Type'] = 'application/json';
   }
-  if (currentClerkUserId) {
-    headers['x-clerk-user-id'] = currentClerkUserId;
+  const userId = overrideUserId || currentClerkUserId;
+  if (userId) {
+    headers['x-clerk-user-id'] = userId;
   }
   if (currentAdminToken) {
     headers['Authorization'] = `Bearer ${currentAdminToken}`;
@@ -148,9 +149,9 @@ export const api = {
   },
 
   // Cart
-  async getCart(): Promise<CartResponse> {
+  async getCart(userId?: string): Promise<CartResponse> {
     const res = await fetch('/api/cart', {
-      headers: getHeaders(false),
+      headers: getHeaders(false, userId),
     });
     return handleResponse<CartResponse>(res);
   },

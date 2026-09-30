@@ -1,0 +1,18 @@
+{
+  "user_clerk_demo_student": {
+    "items": [
+      {
+        "courseId": "crs_matric9_phy_u1",
+        "addedAt": "2026-09-30T15:57:17.747Z"
+      }
+    ]
+  },
+  "user_test_123": {
+    "items": [
+      {
+        "courseId": "crs_matric9_phy_u1",
+        "addedAt": "2026-09-30T17:26:57.440Z"
+      }
+    ]
+  }
+}

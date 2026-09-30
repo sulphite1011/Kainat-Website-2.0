@@ -1,0 +1,41 @@
+[
+  {
+    "id": "crs_1790787452077_jb98s",
+    "title": "2",
+    "class": "Matric 9th",
+    "subject": "Physics",
+    "unitNumber": "2",
+    "chapterName": "2",
+    "description": "2222222222",
+    "price": 300,
+    "coverImageUrl": "/storage/course-covers/1790787448862_3d35feb77ccd6ab9.jpg",
+    "samplePdfUrl": "https://drive.google.com/file/d/135_nAVPhQgHJ3VvcYZVkUYLN0IzuWQmc/view?usp=drive_link",
+    "fullPdfUrl": "https://drive.google.com/file/d/133VbnryPWz8tbCZQkotHKU5ulEXl9kgg/view?usp=drive_link",
+    "pageCount": 22,
+    "isPublished": true,
+    "createdAt": "2026-09-30T16:57:32.078Z",
+    "updatedAt": "2026-09-30T17:01:47.666Z",
+    "hasFullPdf": false
+  },
+  {
+    "id": "crs_matric9_phy_u1",
+    "title": "Physics Chapter 1: Physical Quantities & Measurement",
+    "class": "Matric 9th",
+    "subject": "Physics",
+    "unitNumber": "Unit 1",
+    "unitName": "Physical Quantities",
+    "chapterNumber": "Chapter 1",
+    "chapterName": "Physical Quantities & Measurement",
+    "topicName": "Comprehensive Solved Notes with Numericals",
+    "description": "Complete board-pattern solved short questions, comprehensive theory notes, conceptual numerical derivations, and textbook exercise solutions.",
+    "price": 350,
+    "coverImageUrl": "/storage/course-covers/1790787528250_bfa50292da2f33a3.jpg",
+    "samplePdfUrl": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+    "fullPdfUrl": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+    "pageCount": 38,
+    "isPublished": true,
+    "createdAt": "2026-09-30T15:53:05.388Z",
+    "updatedAt": "2026-09-30T16:58:50.110Z",
+    "hasFullPdf": true
+  }
+]

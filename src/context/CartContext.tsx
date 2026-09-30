@@ -37,11 +37,12 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     try {
       setIsLoading(true);
-      const data = await api.getCart();
-      setItems(data.items || []);
-      setTotalAmount(data.totalAmount || 0);
+      const data = await api.getCart(clerkUserId);
+      setItems(data?.items || []);
+      setTotalAmount(data?.totalAmount || 0);
     } catch (err: any) {
-      console.error('Error loading cart:', err);
+      // Gracefully handle without unhandled console error
+      console.warn('Cart refresh:', err.message);
     } finally {
       setIsLoading(false);
     }

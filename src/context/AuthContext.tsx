@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useUser, useClerk } from '@clerk/clerk-react';
 import { api, setAuthClerkUserId, setAuthAdminToken } from '../services/api';
 import { UserProfile, NotificationItem } from '../types';
+import { StudentLoginModal } from '../components/StudentLoginModal';
 
 interface AuthContextType {
   // Student
@@ -15,8 +16,11 @@ interface AuthContextType {
   notifications: NotificationItem[];
   unreadNotificationCount: number;
   openGoogleSignIn: (pendingCourseId?: string) => void;
+  closeLoginModal: () => void;
+  isLoginModalOpen: boolean;
   signOutStudent: () => Promise<void>;
   refreshStudentProfile: () => Promise<void>;
+  setDevStudentProfile: (profile: { id: string; name: string; email: string; avatar: string }) => void;
 
   // Admin
   isAdminAuthenticated: boolean;
@@ -31,24 +35,23 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Check if Clerk key is real
+// Check if Clerk key is valid
 export const CLERK_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 export const isClerkKeyValid = Boolean(
   CLERK_KEY && CLERK_KEY.startsWith('pk_') && CLERK_KEY !== 'pk_test_placeholder'
 );
 
 export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Clerk hooks (safe if within ClerkProvider)
   let clerkUser: any = null;
   let clerkObj: any = null;
   try {
     clerkUser = useUser().user;
     clerkObj = useClerk();
   } catch (err) {
-    // If not within ClerkProvider or Clerk key is placeholder
+    // safe fallback if not wrapped or clerk error
   }
 
-  // Fallback dev state if Clerk key is placeholder
+  // Fallback dev state
   const [devStudent, setDevStudent] = useState<{
     id: string;
     name: string;
@@ -59,6 +62,7 @@ export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ chi
   const [studentProfile, setStudentProfile] = useState<UserProfile | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [pendingCourseToAdd, setPendingCourseToAdd] = useState<string | null>(null);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
 
   // Admin state
   const [adminToken, setAdminToken] = useState<string | null>(null);
@@ -77,6 +81,15 @@ export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ chi
     : devStudent?.avatar || '';
 
   const isAuthenticated = Boolean(effectiveUserId);
+  // Synchronously ensure API client knows the current active clerk user id
+  setAuthClerkUserId(effectiveUserId);
+
+  // If user signs in, close login modal automatically
+  useEffect(() => {
+    if (isAuthenticated) {
+      setIsLoginModalOpen(false);
+    }
+  }, [isAuthenticated]);
 
   // Keep API client header updated with current clerk user id
   useEffect(() => {
@@ -134,30 +147,25 @@ export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ chi
     if (pendingCourseId) {
       setPendingCourseToAdd(pendingCourseId);
     }
+    // Open in-app modal (zero accounts.dev iframe error, zero email/password confusion)
+    setIsLoginModalOpen(true);
+  };
 
-    if (isClerkKeyValid && clerkObj) {
-      clerkObj.openSignIn({
-        appearance: {
-          elements: {
-            socialButtonsBlockButton: 'clerk-social-btn',
-          },
-        },
-      });
-    } else {
-      // Dev mode: simulate authenticating via Google account
-      const demoId = 'user_clerk_demo_student';
-      setDevStudent({
-        id: demoId,
-        name: 'Hamad Khan',
-        email: 'hamadkhan11h22@gmail.com',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      });
-    }
+  const closeLoginModal = () => {
+    setIsLoginModalOpen(false);
+  };
+
+  const setDevStudentProfile = (profile: { id: string; name: string; email: string; avatar: string }) => {
+    setDevStudent(profile);
   };
 
   const signOutStudent = async () => {
     if (isClerkKeyValid && clerkObj) {
-      await clerkObj.signOut();
+      try {
+        await clerkObj.signOut();
+      } catch (err) {
+        console.warn('Clerk signout warning:', err);
+      }
     }
     setDevStudent(null);
     setStudentProfile(null);
@@ -199,8 +207,11 @@ export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ chi
         notifications,
         unreadNotificationCount,
         openGoogleSignIn,
+        closeLoginModal,
+        isLoginModalOpen,
         signOutStudent,
         refreshStudentProfile,
+        setDevStudentProfile,
         isAdminAuthenticated: Boolean(adminToken),
         adminUsername,
         loginAdmin,
@@ -210,6 +221,10 @@ export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ chi
       }}
     >
       {children}
+      <StudentLoginModal
+        isOpen={isLoginModalOpen}
+        onClose={closeLoginModal}
+      />
     </AuthContext.Provider>
   );
 };
