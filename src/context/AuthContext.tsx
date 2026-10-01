@@ -64,9 +64,21 @@ export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ chi
   const [pendingCourseToAdd, setPendingCourseToAdd] = useState<string | null>(null);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
 
-  // Admin state
-  const [adminToken, setAdminToken] = useState<string | null>(null);
-  const [adminUsername, setAdminUsername] = useState<string | null>(null);
+  // Admin state initialized from localStorage
+  const [adminToken, setAdminToken] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('kainat_admin_token') || null;
+    } catch {
+      return null;
+    }
+  });
+  const [adminUsername, setAdminUsername] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('kainat_admin_user') || null;
+    } catch {
+      return null;
+    }
+  });
 
   // Effective student values
   const effectiveUserId = clerkUser ? clerkUser.id : devStudent?.id || null;
@@ -203,8 +215,9 @@ export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ chi
         return true;
       }
       return false;
-    } catch {
-      return false;
+    } catch (err: any) {
+      console.error('Admin login error:', err);
+      throw err;
     }
   };
 
@@ -212,6 +225,10 @@ export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ chi
     setAdminToken(null);
     setAdminUsername(null);
     setAuthAdminToken(null);
+    try {
+      localStorage.removeItem('kainat_admin_token');
+      localStorage.removeItem('kainat_admin_user');
+    } catch {}
   };
 
   const unreadNotificationCount = notifications.filter((n) => !n.isRead).length;

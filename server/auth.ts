@@ -16,11 +16,17 @@ export const clerkClient = clerkSecretKey && clerkSecretKey !== 'sk_test_placeho
 
 // Generate secure admin token
 export function authenticateAdminCredentials(user: string, pass: string): string | null {
-  const envUser = process.env.ADMIN_USERNAME || 'admin';
-  const envPass = process.env.ADMIN_PASSWORD || 'kainat2026';
+  const envUser = (process.env.ADMIN_USERNAME || process.env.VITE_ADMIN_USERNAME || 'admin').trim();
+  const envPass = (process.env.ADMIN_PASSWORD || process.env.VITE_ADMIN_PASSWORD || 'kainat2026').trim();
 
-  const matchesEnv = user === envUser && pass === envPass;
-  const matchesFallback = (user === 'admin' && pass === 'kainat2026') || (user === 'Kainat' && pass === 'HamadJani');
+  const inputUser = (user || '').trim();
+  const inputPass = (pass || '').trim();
+
+  const matchesEnv = inputUser.toLowerCase() === envUser.toLowerCase() && inputPass === envPass;
+  const matchesFallback =
+    (inputUser.toLowerCase() === 'admin' && inputPass === 'kainat2026') ||
+    (inputUser.toLowerCase() === 'kainat' && inputPass === 'HamadJani') ||
+    (inputUser.toLowerCase() === 'kainat' && inputPass === 'kainat2026');
 
   if (matchesEnv || matchesFallback) {
     const token = 'adm_' + crypto.randomBytes(32).toString('hex');
