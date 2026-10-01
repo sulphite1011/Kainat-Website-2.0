@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, LogOut, BookOpen, User, Mail, ShieldCheck, Bell } from 'lucide-react';
+import { X, LogOut, BookOpen, User, Mail, ShieldCheck, Bell, MessageCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -99,6 +99,17 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ isOpen
             >
               <BookOpen size={18} /> My Library (Purchased Notes)
             </button>
+            <a
+              href={`https://wa.me/923249059918?text=${encodeURIComponent(
+                `Assalam-o-Alaikum, I am student ${studentName || ''} (${studentEmail || ''}) on Kainat Notes Hub and need assistance with my order verification.`
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-secondary"
+              style={{ width: '100%', justifyContent: 'flex-start', padding: '10px 16px', color: 'var(--text-main)', textDecoration: 'none' }}
+            >
+              <MessageCircle size={18} color="#25D366" /> WhatsApp Support & Fast Verification
+            </a>
           </div>
 
           {/* Recent In-App Notifications */}

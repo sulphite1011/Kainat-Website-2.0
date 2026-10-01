@@ -1,10 +1,12 @@
 import React, { useState, useRef } from 'react';
-import { X, Upload, CheckCircle2, Copy, AlertCircle, ArrowRight, RefreshCw } from 'lucide-react';
+import { X, Upload, CheckCircle2, Copy, AlertCircle, ArrowRight, RefreshCw, MessageCircle, Zap, ExternalLink, BookOpen } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { api } from '../services/api';
 import { Order, SiteSettings } from '../types';
+import { buildUrgentVerificationWhatsAppUrl } from '../utils/whatsapp';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -22,15 +24,18 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const { items, totalAmount, clearCart } = useCart();
   const { studentName, studentEmail } = useAuth();
   const { showToast } = useToast();
+  const navigate = useNavigate();
 
   const easyPaisaNum = settings?.easyPaisaNumber || '03415892099';
   const easyPaisaName = settings?.easyPaisaTitle || 'Kainat Educational Services';
+  const whatsAppNumber = settings?.whatsAppNumber || '0324 9059918';
 
   const [transactionId, setTransactionId] = useState<string>('');
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofPreview, setProofPreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [copiedNumber, setCopiedNumber] = useState<boolean>(false);
+  const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -98,8 +103,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
       if (res.success && res.order) {
         await clearCart();
-        showToast(`Order ${res.order.id} submitted! Admin will verify your payment.`, 'success');
-        onOrderSuccess(res.order);
+        setCompletedOrder(res.order);
+        showToast(`Order ${res.order.id} submitted! Verification is pending.`, 'success');
       } else {
         showToast('Failed to submit order. Please check your connection.', 'error');
       }
@@ -119,6 +124,225 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       setIsSubmitting(false);
     }
   };
+
+  const handleFinishCompletedOrder = (goToLibrary: boolean = false) => {
+    if (completedOrder) {
+      onOrderSuccess(completedOrder);
+    }
+    onClose();
+    if (goToLibrary) {
+      navigate('/library');
+    }
+  };
+
+  // If order was submitted, show instant confirmation & WhatsApp urgent access view
+  if (completedOrder) {
+    const courseTitles = completedOrder.coursesSummary?.map((c) => c.title) || items.map((i) => i.title);
+    const whatsappUrl = buildUrgentVerificationWhatsAppUrl({
+      whatsAppNumber,
+      orderId: completedOrder.id,
+      studentName,
+      studentEmail,
+      courseTitles,
+      totalAmount: completedOrder.totalAmount,
+      transactionId: completedOrder.transactionId,
+      createdAt: completedOrder.createdAt,
+    });
+
+    return (
+      <div className="modal-backdrop" onClick={() => handleFinishCompletedOrder(false)}>
+        <div
+          className="modal-content"
+          style={{
+            maxWidth: 520,
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            position: 'relative',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="modal-header" style={{ flexShrink: 0 }}>
+            <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--accent-green)' }}>
+              <CheckCircle2 size={20} /> Payment Submitted
+            </h3>
+            <button className="modal-close-btn" onClick={() => handleFinishCompletedOrder(false)} aria-label="Close">
+              <X size={20} />
+            </button>
+          </div>
+
+          <div className="modal-body" style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+            <div
+              style={{
+                textAlign: 'center',
+                backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                borderRadius: 'var(--radius-md)',
+                padding: '16px',
+                marginBottom: '18px',
+              }}
+            >
+              <div
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: '50%',
+                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                  color: 'var(--accent-green)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 10px',
+                }}
+              >
+                <CheckCircle2 size={28} />
+              </div>
+              <h4 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: 4 }}>
+                Payment Proof Received!
+              </h4>
+              <div
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.92rem',
+                  fontWeight: 700,
+                  backgroundColor: 'var(--bg-primary)',
+                  display: 'inline-block',
+                  padding: '4px 10px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border-subtle)',
+                  marginBottom: 6,
+                }}
+              >
+                Order #{completedOrder.id}
+              </div>
+              <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)', margin: 0 }}>
+                Verification is pending. Once verified by our team, all notes unlock permanently in your library.
+              </p>
+            </div>
+
+            {/* URGENT ACCESS WHATSAPP PROMPT */}
+            <div
+              style={{
+                backgroundColor: 'rgba(37, 211, 102, 0.08)',
+                border: '1.5px solid rgba(37, 211, 102, 0.35)',
+                borderRadius: 'var(--radius-md)',
+                padding: '16px',
+                marginBottom: '18px',
+                boxShadow: '0 4px 16px rgba(37, 211, 102, 0.08)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span
+                  style={{
+                    backgroundColor: '#25D366',
+                    color: '#fff',
+                    borderRadius: '50%',
+                    width: 24,
+                    height: 24,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Zap size={14} />
+                </span>
+                <span style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                  Need Urgent Early Access?
+                </span>
+              </div>
+              <p style={{ fontSize: '0.83rem', color: 'var(--text-muted)', marginBottom: 14, lineHeight: 1.45 }}>
+                Have an exam or studying right now? Tap below to open WhatsApp with your pre-filled student details, order ID, and transaction ID ready to send for instant verification!
+              </p>
+
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn"
+                style={{
+                  backgroundColor: '#25D366',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '0.92rem',
+                  padding: '12px 16px',
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  borderRadius: 'var(--radius-sm)',
+                  boxShadow: '0 4px 12px rgba(37, 211, 102, 0.3)',
+                  textDecoration: 'none',
+                }}
+              >
+                <MessageCircle size={18} />
+                Request Urgent WhatsApp Verification
+                <ExternalLink size={14} />
+              </a>
+            </div>
+
+            {/* Quick Order Info */}
+            <div
+              style={{
+                backgroundColor: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-md)',
+                padding: '12px 14px',
+                fontSize: '0.82rem',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Student Name:</span>
+                <span style={{ fontWeight: 600 }}>{studentName}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Transaction ID:</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{completedOrder.transactionId}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Total Amount:</span>
+                <span style={{ fontWeight: 700, color: 'var(--primary)' }}>Rs. {completedOrder.totalAmount}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Status:</span>
+                <span className="badge badge-pending">PENDING VERIFICATION</span>
+              </div>
+            </div>
+          </div>
+
+          <div
+            className="modal-footer"
+            style={{
+              padding: '14px 20px',
+              borderTop: '1px solid var(--border-subtle)',
+              backgroundColor: 'var(--bg-modal)',
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => handleFinishCompletedOrder(false)}
+            >
+              Done
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => handleFinishCompletedOrder(true)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <BookOpen size={16} /> View in My Library
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="modal-backdrop" onClick={onClose}>

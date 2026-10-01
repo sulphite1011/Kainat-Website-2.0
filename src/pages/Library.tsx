@@ -1,16 +1,23 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, ShieldCheck, ShoppingBag, Clock, FileText } from 'lucide-react';
+import { BookOpen, ShieldCheck, ShoppingBag, Clock, FileText, MessageCircle, Zap, ExternalLink } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { db } from '../firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { Course, Order } from '../types';
+import { Course, Order, SiteSettings } from '../types';
 import { PdfViewerModal } from '../components/PdfViewerModal';
+import { buildUrgentVerificationWhatsAppUrl } from '../utils/whatsapp';
 
-export const Library: React.FC = () => {
+interface LibraryProps {
+  settings?: SiteSettings;
+}
+
+export const Library: React.FC<LibraryProps> = ({ settings }) => {
   const { isAuthenticated, clerkUserId, studentName, studentEmail, studentAvatar, openGoogleSignIn } = useAuth();
   const navigate = useNavigate();
+
+  const whatsAppNumber = settings?.whatsAppNumber || '0324 9059918';
 
   const [purchasedCourses, setPurchasedCourses] = useState<Course[]>([]);
   const [myOrders, setMyOrders] = useState<Order[]>([]);
@@ -172,24 +179,89 @@ export const Library: React.FC = () => {
         </button>
       </div>
 
-      {/* Pending Orders Notice Banner */}
+      {/* Pending Orders Notice Banner with WhatsApp Urgent Access */}
       {pendingOrders.length > 0 && (
         <div
           style={{
             backgroundColor: 'rgba(245, 158, 11, 0.08)',
             border: '1px solid rgba(245, 158, 11, 0.3)',
             borderRadius: 'var(--radius-md)',
-            padding: '16px 20px',
+            padding: '20px',
             marginBottom: '28px',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700, color: 'var(--accent-gold)', marginBottom: 6 }}>
-            <Clock size={18} /> Payment Verification in Progress
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700, color: 'var(--accent-gold)' }}>
+              <Clock size={20} /> Payment Verification in Progress ({pendingOrders.length})
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              <Zap size={14} color="#25D366" />
+              <span>Need urgent early access? Direct WhatsApp verification is active.</span>
+            </div>
           </div>
-          <div style={{ fontSize: '0.88rem', color: 'var(--text-muted)' }}>
-            We received your EasyPaisa payment for{' '}
-            <strong>{pendingOrders.map((o) => o.id).join(', ')}</strong>. The admin is verifying your
-            transaction. Your notes will automatically unlock here once approved.
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {pendingOrders.map((order) => {
+              const orderTitles = order.coursesSummary?.map((c) => c.title) || [];
+              const waUrl = buildUrgentVerificationWhatsAppUrl({
+                whatsAppNumber,
+                orderId: order.id,
+                studentName,
+                studentEmail,
+                courseTitles: orderTitles,
+                totalAmount: order.totalAmount,
+                transactionId: order.transactionId,
+                createdAt: order.createdAt,
+              });
+
+              return (
+                <div
+                  key={order.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: 12,
+                    backgroundColor: 'var(--bg-primary)',
+                    padding: '12px 16px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>
+                      Order #{order.id} • <span style={{ color: 'var(--primary)' }}>Rs. {order.totalAmount}</span>
+                    </div>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                      Trx ID: <span style={{ fontFamily: 'var(--font-mono)' }}>{order.transactionId}</span> •{' '}
+                      {orderTitles.slice(0, 2).join(', ')}{orderTitles.length > 2 ? ` (+${orderTitles.length - 2} more)` : ''}
+                    </div>
+                  </div>
+
+                  <a
+                    href={waUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-sm"
+                    style={{
+                      backgroundColor: '#25D366',
+                      color: '#ffffff',
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      textDecoration: 'none',
+                      boxShadow: '0 2px 8px rgba(37,211,102,0.25)',
+                    }}
+                  >
+                    <MessageCircle size={15} />
+                    Contact on WhatsApp for Early Access
+                    <ExternalLink size={12} />
+                  </a>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -277,35 +349,81 @@ export const Library: React.FC = () => {
                   <th>Amount</th>
                   <th>Transaction ID</th>
                   <th>Status</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {myOrders.map((order) => (
-                  <tr key={order.id}>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{order.id}</td>
-                    <td>{new Date(order.createdAt).toLocaleDateString()}</td>
-                    <td>
-                      {order.coursesSummary?.map((c) => c.title).join(', ') || `${order.courseIds.length} notes`}
-                    </td>
-                    <td style={{ fontWeight: 700 }}>Rs. {order.totalAmount}</td>
-                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
-                      {order.transactionId}
-                    </td>
-                    <td>
-                      <span
-                        className={`badge ${
-                          order.status === 'VERIFIED'
-                            ? 'badge-verified'
-                            : order.status === 'PENDING'
-                            ? 'badge-pending'
-                            : 'badge-rejected'
-                        }`}
-                      >
-                        {order.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {myOrders.map((order) => {
+                  const orderTitles = order.coursesSummary?.map((c) => c.title) || [];
+                  const waUrl = buildUrgentVerificationWhatsAppUrl({
+                    whatsAppNumber,
+                    orderId: order.id,
+                    studentName,
+                    studentEmail,
+                    courseTitles: orderTitles,
+                    totalAmount: order.totalAmount,
+                    transactionId: order.transactionId,
+                    createdAt: order.createdAt,
+                  });
+
+                  return (
+                    <tr key={order.id}>
+                      <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{order.id}</td>
+                      <td>{new Date(order.createdAt).toLocaleDateString()}</td>
+                      <td>
+                        {orderTitles.join(', ') || `${order.courseIds.length} notes`}
+                      </td>
+                      <td style={{ fontWeight: 700 }}>Rs. {order.totalAmount}</td>
+                      <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                        {order.transactionId}
+                      </td>
+                      <td>
+                        <span
+                          className={`badge ${
+                            order.status === 'VERIFIED'
+                              ? 'badge-verified'
+                              : order.status === 'PENDING'
+                              ? 'badge-pending'
+                              : 'badge-rejected'
+                          }`}
+                        >
+                          {order.status}
+                        </span>
+                      </td>
+                      <td>
+                        {order.status === 'PENDING' ? (
+                          <a
+                            href={waUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-sm"
+                            style={{
+                              backgroundColor: '#25D366',
+                              color: '#ffffff',
+                              fontWeight: 600,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              fontSize: '0.78rem',
+                              padding: '4px 8px',
+                              textDecoration: 'none',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title="Message support on WhatsApp for instant verification"
+                          >
+                            <Zap size={13} /> Urgent Access
+                          </a>
+                        ) : order.status === 'VERIFIED' ? (
+                          <span style={{ color: 'var(--accent-green)', fontSize: '0.8rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <ShieldCheck size={14} /> Active
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>Closed</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -14,8 +14,9 @@ import { SiteSettings, Order } from './types';
 import { api } from './services/api';
 import { db } from './firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { CheckCircle2, BookOpen, X } from 'lucide-react';
+import { CheckCircle2, BookOpen, X, MessageCircle, Zap, ExternalLink } from 'lucide-react';
 import { AuthenticateWithRedirectCallback } from '@clerk/clerk-react';
+import { buildUrgentVerificationWhatsAppUrl } from './utils/whatsapp';
 
 const DEFAULT_SETTINGS: SiteSettings = {
   siteName: 'Kainat Notes Hub',
@@ -99,7 +100,7 @@ function AppContent() {
       <div className="main-content" style={{ flex: 1 }}>
         <Routes>
           <Route path="/" element={<Home settings={settings} />} />
-          <Route path="/library" element={<Library />} />
+          <Route path="/library" element={<Library settings={settings} />} />
           <Route path="/admin" element={<AdminPortal settings={settings} onSettingsUpdated={setSettings} />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/sso-callback" element={<AuthenticateWithRedirectCallback />} />
@@ -108,74 +109,135 @@ function AppContent() {
 
       <Footer settings={settings} />
 
-      {/* Order Submission Success Dialog */}
-      {confirmedOrder && (
-        <div className="modal-backdrop" onClick={() => setConfirmedOrder(null)}>
-          <div className="modal-content" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--accent-green)' }}>
-                <CheckCircle2 size={20} /> Order Submitted
-              </h3>
-              <button className="modal-close-btn" onClick={() => setConfirmedOrder(null)}>
-                <X size={20} />
-              </button>
-            </div>
+      {/* Order Submission Success Dialog with WhatsApp Urgent Access */}
+      {confirmedOrder && (() => {
+        const whatsappUrl = buildUrgentVerificationWhatsAppUrl({
+          whatsAppNumber: settings.whatsAppNumber,
+          orderId: confirmedOrder.id,
+          studentName: confirmedOrder.studentName,
+          studentEmail: confirmedOrder.studentEmail,
+          courseTitles: confirmedOrder.coursesSummary?.map((c) => c.title) || [],
+          totalAmount: confirmedOrder.totalAmount,
+          transactionId: confirmedOrder.transactionId,
+          createdAt: confirmedOrder.createdAt,
+        });
 
-            <div className="modal-body" style={{ textAlign: 'center', padding: '24px 20px' }}>
-              <div
-                style={{
-                  width: 60,
-                  height: 60,
-                  borderRadius: '50%',
-                  backgroundColor: 'var(--accent-green-bg)',
-                  color: 'var(--accent-green)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  margin: '0 auto 16px',
-                }}
-              >
-                <CheckCircle2 size={32} />
+        return (
+          <div className="modal-backdrop" onClick={() => setConfirmedOrder(null)}>
+            <div className="modal-content" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--accent-green)' }}>
+                  <CheckCircle2 size={20} /> Order Submitted
+                </h3>
+                <button className="modal-close-btn" onClick={() => setConfirmedOrder(null)} aria-label="Close">
+                  <X size={20} />
+                </button>
               </div>
 
-              <h4 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: 8 }}>
-                Thank You for Your Order!
-              </h4>
+              <div className="modal-body" style={{ textAlign: 'center', padding: '24px 20px' }}>
+                <div
+                  style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: '50%',
+                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                    color: 'var(--accent-green)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto 14px',
+                  }}
+                >
+                  <CheckCircle2 size={30} />
+                </div>
 
-              <div
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '0.95rem',
-                  fontWeight: 700,
-                  backgroundColor: 'var(--bg-tertiary)',
-                  padding: '8px 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  marginBottom: 14,
-                  display: 'inline-block',
-                }}
-              >
-                Order #{confirmedOrder.id}
+                <h4 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: 6 }}>
+                  Thank You for Your Order!
+                </h4>
+
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '0.95rem',
+                    fontWeight: 700,
+                    backgroundColor: 'var(--bg-tertiary)',
+                    padding: '6px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    marginBottom: 12,
+                    display: 'inline-block',
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  Order #{confirmedOrder.id}
+                </div>
+
+                <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginBottom: 18, lineHeight: 1.5 }}>
+                  Your EasyPaisa payment (<strong>Rs. {confirmedOrder.totalAmount}</strong>) has been submitted for review.
+                  Your notes will unlock automatically once verified.
+                </p>
+
+                {/* URGENT ACCESS WHATSAPP CALLOUT */}
+                <div
+                  style={{
+                    backgroundColor: 'rgba(37, 211, 102, 0.08)',
+                    border: '1px solid rgba(37, 211, 102, 0.3)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '14px',
+                    marginBottom: '18px',
+                    textAlign: 'left',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                    <Zap size={16} color="#25D366" />
+                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                      Need Urgent Early Access?
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.4 }}>
+                    Studying for an exam right now? Contact our verification team on WhatsApp with your pre-filled details to get verified immediately!
+                  </p>
+                  <a
+                    href={whatsappUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn"
+                    style={{
+                      backgroundColor: '#25D366',
+                      color: '#ffffff',
+                      fontWeight: 700,
+                      fontSize: '0.88rem',
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      padding: '10px 14px',
+                      borderRadius: 'var(--radius-sm)',
+                      textDecoration: 'none',
+                      boxShadow: '0 2px 10px rgba(37, 211, 102, 0.25)',
+                    }}
+                  >
+                    <MessageCircle size={18} />
+                    WhatsApp Us for Urgent Access
+                    <ExternalLink size={14} />
+                  </a>
+                </div>
+
+                <button
+                  className="btn btn-primary"
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                  onClick={() => {
+                    setConfirmedOrder(null);
+                    navigate('/library');
+                  }}
+                >
+                  <BookOpen size={16} /> Go to My Library
+                </button>
               </div>
-
-              <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: 20 }}>
-                Your EasyPaisa payment (Rs. {confirmedOrder.totalAmount}) is under admin review. Once verified,
-                your notes will instantly appear in your personal library.
-              </p>
-
-              <button
-                className="btn btn-primary"
-                style={{ width: '100%' }}
-                onClick={() => {
-                  setConfirmedOrder(null);
-                  navigate('/library');
-                }}
-              >
-                <BookOpen size={16} /> Go to My Library
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
