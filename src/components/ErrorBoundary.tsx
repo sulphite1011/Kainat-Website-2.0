@@ -29,6 +29,15 @@ export class ErrorBoundary extends Component<Props, State> {
     window.location.reload();
   };
 
+  private handleResetAndReload = () => {
+    try {
+      localStorage.removeItem('kainat_courses');
+      localStorage.removeItem('kainat_settings');
+    } catch {}
+    this.setState({ hasError: false, error: null });
+    window.location.reload();
+  };
+
   public render() {
     if (this.state.hasError) {
       return (
@@ -49,7 +58,7 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
             <h2 className="empty-state-title">Something went wrong</h2>
             <p className="empty-state-desc">
-              The application encountered an unexpected error. Your saved data is safely stored on the server.
+              The application encountered an unexpected error. Your saved data is safely stored in Cloud Firestore.
             </p>
             {this.state.error?.message && (
               <div
@@ -69,9 +78,14 @@ export class ErrorBoundary extends Component<Props, State> {
                 {this.state.error.message}
               </div>
             )}
-            <button className="btn btn-primary" onClick={this.handleReload}>
-              <RefreshCw size={16} /> Reload Page
-            </button>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button className="btn btn-primary" onClick={this.handleReload}>
+                <RefreshCw size={16} /> Reload Page
+              </button>
+              <button className="btn btn-secondary" onClick={this.handleResetAndReload}>
+                Clear Cache & Refresh
+              </button>
+            </div>
           </div>
         </div>
       );

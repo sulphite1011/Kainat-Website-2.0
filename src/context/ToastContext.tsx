@@ -13,16 +13,53 @@ interface ToastContextType {
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
+function cleanErrorMessage(msg: string): string {
+  if (!msg) return 'An unexpected issue occurred';
+  const str = String(msg).trim();
+
+  // Try parsing JSON error info (such as FirestoreErrorInfo)
+  if (str.startsWith('{') && str.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(str);
+      if (parsed.error) {
+        return cleanErrorMessage(parsed.error);
+      }
+    } catch {}
+  }
+
+  // Common pattern replacements
+  const lower = str.toLowerCase();
+  if (lower.includes('client is offline')) {
+    return 'Database is currently offline. Working from local cache until reconnected.';
+  }
+  if (lower.includes('insufficient permissions') || lower.includes('permission-denied')) {
+    return 'Permission denied. Please verify your administrative or student login.';
+  }
+  if (lower.includes('quota exceeded') || lower.includes('quota-exceeded')) {
+    return 'Cloud request quota reached for today. Changes are safely preserved.';
+  }
+  if (lower.includes('failed to fetch') || lower.includes('networkerror') || lower.includes('network request failed')) {
+    return 'Network connection issue. Please check your internet connection.';
+  }
+  if (lower.includes('transaction could not be verified')) {
+    return 'Transaction reference could not be verified. Please check the ID and try again.';
+  }
+
+  // Remove technical prefixes if present
+  return str.replace(/^FirebaseError:\s*/i, '').replace(/^Error:\s*/i, '');
+}
+
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+  const showToast = useCallback((rawMessage: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const message = type === 'error' ? cleanErrorMessage(rawMessage) : rawMessage;
     const id = `toast_${Date.now()}_${Math.random()}`;
     setToasts((prev) => [...prev, { id, message, type }]);
 
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4500);
+    }, 5000);
   }, []);
 
   const removeToast = (id: string) => {

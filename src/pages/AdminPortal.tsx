@@ -50,6 +50,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ settings, onSettingsUp
   const [isLogoModalOpen, setIsLogoModalOpen] = useState<boolean>(false);
   const [isCourseModalOpen, setIsCourseModalOpen] = useState<boolean>(false);
   const [editingCourse, setEditingCourse] = useState<Partial<Course> | null>(null);
+  const [isSavingCourse, setIsSavingCourse] = useState<boolean>(false);
   const [selectedProofUrl, setSelectedProofUrl] = useState<string | null>(null);
   const [deleteConfirmCourse, setDeleteConfirmCourse] = useState<{ id: string; title: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
@@ -263,6 +264,51 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ settings, onSettingsUp
     }
   };
 
+  const duplicateCount = useMemo(() => {
+    const seen = new Set<string>();
+    let count = 0;
+    const sorted = [...courses].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    for (const c of sorted) {
+      const key = `${(c.title || '').trim().toLowerCase()}__${(c.class || '').trim().toLowerCase()}`;
+      if (seen.has(key)) count++;
+      else seen.add(key);
+    }
+    return count;
+  }, [courses]);
+
+  const handleCleanDuplicates = async () => {
+    const seen = new Set<string>();
+    const duplicateIds: string[] = [];
+    const sorted = [...courses].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+    for (const c of sorted) {
+      const key = `${(c.title || '').trim().toLowerCase()}__${(c.class || '').trim().toLowerCase()}`;
+      if (seen.has(key)) {
+        duplicateIds.push(c.id);
+      } else {
+        seen.add(key);
+      }
+    }
+
+    if (duplicateIds.length === 0) {
+      showToast('No duplicate courses found', 'info');
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      for (const id of duplicateIds) {
+        await api.deleteCourse(id);
+      }
+      showToast(`Successfully removed ${duplicateIds.length} duplicate course(s)!`, 'success');
+      await loadData();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to clean duplicates', 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Course Cover Upload
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -287,12 +333,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ settings, onSettingsUp
   // Save / Update Course
   const handleSaveCourse = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingCourse?.title || !editingCourse?.class || !editingCourse?.subject || editingCourse?.price === undefined) {
+    if (isSavingCourse) return;
+
+    if (!editingCourse?.title?.trim() || !editingCourse?.class || !editingCourse?.subject?.trim() || editingCourse?.price === undefined) {
       showToast('Title, Class, Subject, and Price are required.', 'error');
       return;
     }
 
     try {
+      setIsSavingCourse(true);
       if (editingCourse.id) {
         // Update
         await api.updateCourse(editingCourse.id, editingCourse);
@@ -300,13 +349,25 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ settings, onSettingsUp
       } else {
         // Create
         await api.createCourse(editingCourse);
-        showToast('Course created successfully', 'success');
+        showToast('Course created successfully and synced to cloud!', 'success');
       }
       setIsCourseModalOpen(false);
       setEditingCourse(null);
-      loadData();
+      await loadData();
     } catch (err: any) {
-      showToast(err.message || 'Failed to save course', 'error');
+      console.error('Failed to save course:', err);
+      let errMsg = 'Failed to save course to cloud database.';
+      try {
+        if (typeof err.message === 'string' && err.message.startsWith('{')) {
+          const parsed = JSON.parse(err.message);
+          errMsg = parsed.error || errMsg;
+        } else if (err.message) {
+          errMsg = err.message;
+        }
+      } catch {}
+      showToast(errMsg, 'error');
+    } finally {
+      setIsSavingCourse(false);
     }
   };
 
@@ -579,27 +640,45 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ settings, onSettingsUp
       {/* TAB 3: COURSES */}
       {activeTab === 'courses' && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Course & Notes Management</h2>
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => {
-                setEditingCourse({
-                  title: '',
-                  class: 'Matric 9th',
-                  subject: 'Physics',
-                  description: '',
-                  price: 300,
-                  coverImageUrl: '',
-                  samplePdfUrl: '',
-                  fullPdfUrl: '',
-                  isPublished: true,
-                });
-                setIsCourseModalOpen(true);
-              }}
-            >
-              <Plus size={16} /> Create New Course
-            </button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+            <div>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Course & Notes Management</h2>
+              <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                Total Courses: {courses.length}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {duplicateCount > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleCleanDuplicates}
+                  disabled={isDeleting}
+                  style={{ color: 'var(--accent-red)', borderColor: 'rgba(239, 68, 68, 0.3)' }}
+                >
+                  <Trash2 size={14} /> Remove {duplicateCount} Duplicate{duplicateCount > 1 ? 's' : ''}
+                </button>
+              )}
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  setEditingCourse({
+                    title: '',
+                    class: 'Matric 9th',
+                    subject: 'Physics',
+                    description: '',
+                    price: 300,
+                    coverImageUrl: '',
+                    samplePdfUrl: '',
+                    fullPdfUrl: '',
+                    isPublished: true,
+                  });
+                  setIsCourseModalOpen(true);
+                }}
+              >
+                <Plus size={16} /> Create New Course
+              </button>
+            </div>
           </div>
 
           <div className="admin-table-container">
@@ -972,19 +1051,42 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ settings, onSettingsUp
 
       {/* Course Create / Edit Modal */}
       {isCourseModalOpen && editingCourse && (
-        <div className="modal-backdrop" onClick={() => setIsCourseModalOpen(false)}>
-          <div className="modal-content" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
+        <div className="modal-backdrop" onClick={() => !isSavingCourse && setIsCourseModalOpen(false)}>
+          <div
+            className="modal-content"
+            style={{
+              maxWidth: 640,
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              position: 'relative',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header" style={{ flexShrink: 0 }}>
               <h3 className="modal-title">
-                {editingCourse.id ? 'Edit Course' : 'Create New Educational Course'}
+                {editingCourse.id ? 'Edit Course Notes' : 'Create New Educational Course Notes'}
               </h3>
-              <button className="modal-close-btn" onClick={() => setIsCourseModalOpen(false)}>
+              <button
+                className="modal-close-btn"
+                onClick={() => !isSavingCourse && setIsCourseModalOpen(false)}
+                disabled={isSavingCourse}
+              >
                 &times;
               </button>
             </div>
 
-            <form onSubmit={handleSaveCourse}>
-              <div className="modal-body" style={{ maxHeight: '72vh', overflowY: 'auto' }}>
+            <form
+              onSubmit={handleSaveCourse}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                flex: 1,
+                minHeight: 0,
+                overflow: 'hidden',
+              }}
+            >
+              <div className="modal-body" style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
                 <div className="form-group">
                   <label className="form-label">
                     Course Title <span className="req">*</span>
@@ -1241,16 +1343,51 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ settings, onSettingsUp
                 </div>
               </div>
 
-              <div className="modal-footer">
+              <div
+                className="modal-footer"
+                style={{
+                  padding: '16px 20px',
+                  borderTop: '1px solid var(--border-subtle)',
+                  backgroundColor: 'var(--bg-modal)',
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  gap: 12,
+                  position: 'sticky',
+                  bottom: 0,
+                  zIndex: 20,
+                }}
+              >
                 <button
                   type="button"
                   className="btn btn-secondary"
                   onClick={() => setIsCourseModalOpen(false)}
+                  disabled={isSavingCourse}
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
-                  Save Course to Server
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={isSavingCourse}
+                  style={{
+                    minWidth: 170,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                  }}
+                >
+                  {isSavingCourse ? (
+                    <>
+                      <RefreshCw size={16} className="animate-spin" /> Saving Notes...
+                    </>
+                  ) : editingCourse.id ? (
+                    'Update Course'
+                  ) : (
+                    'Save Course to Cloud'
+                  )}
                 </button>
               </div>
             </form>

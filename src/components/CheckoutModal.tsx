@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, Upload, CheckCircle2, Copy, AlertCircle, ArrowRight } from 'lucide-react';
+import { X, Upload, CheckCircle2, Copy, AlertCircle, ArrowRight, RefreshCw } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -62,6 +62,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (isSubmitting) return;
+
     if (!transactionId.trim()) {
       showToast('Please enter your EasyPaisa Transaction / Reference ID', 'error');
       return;
@@ -79,14 +81,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       // Upload proof screenshot if provided
       if (proofFile) {
         const formData = new FormData();
-        formData.append('proof', proofFile);
+        formData.append('screenshot', proofFile);
         const uploadRes = await api.uploadPaymentProof(formData);
-        if (uploadRes.success) {
+        if (uploadRes.success && uploadRes.proofUrl) {
           paymentProofUrl = uploadRes.proofUrl;
         }
       }
 
-      // Submit Order to backend
+      // Submit Order to backend / Firestore
       const courseIds = items.map((i) => i.courseId);
       const res = await api.createOrder({
         courseIds,
@@ -96,13 +98,23 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
       if (res.success && res.order) {
         await clearCart();
-        showToast(`Order ${res.order.id} submitted for verification!`, 'success');
+        showToast(`Order ${res.order.id} submitted! Admin will verify your payment.`, 'success');
         onOrderSuccess(res.order);
       } else {
-        showToast('Failed to submit order', 'error');
+        showToast('Failed to submit order. Please check your connection.', 'error');
       }
     } catch (err: any) {
-      showToast(err.message || 'Failed to submit order', 'error');
+      console.error('Order submission error:', err);
+      let errMsg = 'Failed to submit order. Please check your connection and try again.';
+      try {
+        if (typeof err.message === 'string' && err.message.startsWith('{')) {
+          const parsed = JSON.parse(err.message);
+          errMsg = parsed.error || errMsg;
+        } else if (err.message) {
+          errMsg = err.message;
+        }
+      } catch {}
+      showToast(errMsg, 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -110,16 +122,42 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-content" style={{ maxWidth: 540 }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
+      <div
+        className="modal-content"
+        style={{
+          maxWidth: 540,
+          maxHeight: '90vh',
+          display: 'flex',
+          flexDirection: 'column',
+          position: 'relative',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-header" style={{ flexShrink: 0 }}>
           <h3 className="modal-title">EasyPaisa Manual Payment</h3>
           <button className="modal-close-btn" onClick={onClose} aria-label="Close">
             <X size={20} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmitOrder}>
-          <div className="modal-body">
+        <form
+          onSubmit={handleSubmitOrder}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            flex: 1,
+            minHeight: 0,
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            className="modal-body"
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: '20px',
+            }}
+          >
             {/* Account Info Card */}
             <div
               style={{
@@ -302,12 +340,42 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             </div>
           </div>
 
-          <div className="modal-footer">
+          <div
+            className="modal-footer"
+            style={{
+              padding: '16px 20px',
+              borderTop: '1px solid var(--border-subtle)',
+              backgroundColor: 'var(--bg-modal)',
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: 12,
+              position: 'sticky',
+              bottom: 0,
+              zIndex: 30,
+            }}
+          >
             <button type="button" className="btn btn-secondary" onClick={onClose} disabled={isSubmitting}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
-              {isSubmitting ? 'Submitting Order...' : (
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={isSubmitting}
+              style={{
+                minWidth: 210,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+              }}
+            >
+              {isSubmitting ? (
+                <>
+                  <RefreshCw size={16} className="animate-spin" /> Submitting Payment...
+                </>
+              ) : (
                 <>
                   Confirm & Submit Payment <ArrowRight size={16} />
                 </>

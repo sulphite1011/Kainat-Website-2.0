@@ -4,6 +4,7 @@ import { AcademicFilter } from '../components/AcademicFilter';
 import { CourseCard } from '../components/CourseCard';
 import { EmptySection } from '../components/EmptySection';
 import { PdfViewerModal } from '../components/PdfViewerModal';
+import { CourseSkeletonGrid } from '../components/CourseSkeletonGrid';
 import { Course, SiteSettings } from '../types';
 import { api } from '../services/api';
 import { db } from '../firebase';
@@ -97,13 +98,9 @@ export const Home: React.FC<HomeProps> = ({ settings }) => {
           customClasses={settings.customClasses}
         />
 
-        {/* Course Grid or Empty State */}
+        {/* Course Grid or Empty State with Engaging Skeleton Loader */}
         {isLoading ? (
-          <div style={{ textAlign: 'center', padding: '64px 20px', color: 'var(--text-muted)' }}>
-            <div style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: 8 }}>
-              Loading courses from server...
-            </div>
-          </div>
+          <CourseSkeletonGrid />
         ) : filteredCourses.length === 0 ? (
           <EmptySection sectionName={selectedSection} settings={settings} />
         ) : (
