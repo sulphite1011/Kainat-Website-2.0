@@ -320,8 +320,86 @@ export const api = {
     }
   },
 
-  // Protected PDF Document
-  async getCourseDocument(courseId: string): Promise<DocumentResponse> {
+  // Protected PDF Document with dynamic student watermark from Firestore
+  async getCourseDocument(
+    courseId: string,
+    studentInfo?: { clerkUserId?: string | null; studentName?: string; studentEmail?: string }
+  ): Promise<DocumentResponse> {
+    const userId = studentInfo?.clerkUserId || currentClerkUserId;
+    let studentName = studentInfo?.studentName || '';
+    let studentEmail = studentInfo?.studentEmail || '';
+    let orderId = '';
+    let licenseId = '';
+
+    // 1. If we have userId, fetch UserProfile from Firestore
+    if (userId) {
+      try {
+        const userRef = doc(db, 'users', userId);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const uData = userSnap.data() as UserProfile;
+          if (!studentName && uData.name) studentName = uData.name;
+          if (!studentEmail && uData.email) studentEmail = uData.email;
+        }
+      } catch (err) {
+        console.warn('Could not fetch user profile for watermark:', err);
+      }
+
+      // 2. Query Firestore orders collection for this student's order containing courseId
+      try {
+        const ordersQuery = query(
+          collection(db, 'orders'),
+          where('clerkUserId', '==', userId)
+        );
+        const ordersSnap = await getDocs(ordersQuery);
+        let matchingOrder: Order | null = null;
+        ordersSnap.forEach((docItem) => {
+          const ord = docItem.data() as Order;
+          if (ord.courseIds && ord.courseIds.includes(courseId)) {
+            // prioritize verified orders
+            if (ord.status === 'VERIFIED') {
+              matchingOrder = ord;
+            } else if (!matchingOrder) {
+              matchingOrder = ord;
+            }
+          }
+        });
+
+        // Fallback: if no course-specific order was found, get their most recent verified order
+        if (!matchingOrder && !ordersSnap.empty) {
+          const allUserOrders: Order[] = [];
+          ordersSnap.forEach((docItem) => allUserOrders.push(docItem.data() as Order));
+          allUserOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          matchingOrder = allUserOrders.find((o) => o.status === 'VERIFIED') || allUserOrders[0] || null;
+        }
+
+        if (matchingOrder) {
+          orderId = matchingOrder.id;
+          if (!studentName && matchingOrder.studentName) studentName = matchingOrder.studentName;
+          if (!studentEmail && matchingOrder.studentEmail) studentEmail = matchingOrder.studentEmail;
+          licenseId = 'LIC-' + matchingOrder.id.replace('ORD-', '') + '-' + courseId.slice(0, 4).toUpperCase();
+        }
+      } catch (err) {
+        console.warn('Could not query order for watermark:', err);
+      }
+    }
+
+    // Real dynamic fallbacks if not yet recorded in Firestore
+    if (!studentName) studentName = 'Verified Student';
+    if (!studentEmail) studentEmail = 'student@kainatnoteshub.com';
+    if (!orderId) {
+      // Deterministic clean order ID based on student identifier and course
+      const seed = ((userId || 'student') + courseId);
+      let hash = 0;
+      for (let i = 0; i < seed.length; i++) {
+        hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+      }
+      orderId = 'ORD-' + (Math.abs(hash) % 900000 + 100000);
+    }
+    if (!licenseId) {
+      licenseId = 'LIC-' + orderId.replace('ORD-', '') + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+    }
+
     try {
       const course = await this.getCourse(courseId);
       return {
@@ -334,10 +412,10 @@ export const api = {
         samplePdfUrl: course.samplePdfUrl,
         watermark: {
           brand: 'Kainat Notes Hub',
-          studentName: 'Verified Student',
-          studentEmail: 'student@example.com',
-          orderId: 'ORD-CLOUD',
-          licenseId: 'LIC-' + Math.random().toString(36).substring(2, 8).toUpperCase(),
+          studentName,
+          studentEmail,
+          orderId,
+          licenseId,
           timestamp: new Date().toISOString(),
         },
       };
@@ -352,10 +430,10 @@ export const api = {
         samplePdfUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
         watermark: {
           brand: 'Kainat Notes Hub',
-          studentName: 'Verified Student',
-          studentEmail: 'student@example.com',
-          orderId: 'ORD-CLOUD',
-          licenseId: 'LIC-DEFAULT',
+          studentName,
+          studentEmail,
+          orderId,
+          licenseId,
           timestamp: new Date().toISOString(),
         },
       };

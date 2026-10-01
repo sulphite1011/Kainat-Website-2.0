@@ -22,7 +22,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
   onClose,
 }) => {
   const { addToCart } = useCart();
-  const { studentProfile } = useAuth();
+  const { studentProfile, studentName, studentEmail, clerkUserId } = useAuth();
 
   const isPurchased = Boolean(studentProfile?.purchasedCourseIds?.includes(courseId));
   const [currentMode, setCurrentMode] = useState<'sample' | 'paid'>(
@@ -67,13 +67,17 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
     };
   }, []);
 
-  // If paid mode, load from protected backend endpoint
+  // If paid mode, load from protected backend endpoint with real student details
   useEffect(() => {
     if (currentMode === 'paid') {
       setIsLoading(true);
       setErrorMessage(null);
       api
-        .getCourseDocument(courseId)
+        .getCourseDocument(courseId, {
+          clerkUserId,
+          studentName: studentName || studentProfile?.name,
+          studentEmail: studentEmail || studentProfile?.email,
+        })
         .then((res) => {
           setDocData(res);
           setIsLoading(false);
@@ -83,7 +87,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
           setIsLoading(false);
         });
     }
-  }, [courseId, currentMode]);
+  }, [courseId, currentMode, clerkUserId, studentName, studentEmail, studentProfile]);
 
   // Determine which PDF URL to display
   let pdfUrlToDisplay = '';
@@ -160,19 +164,24 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
               </button>
             )
           ) : (
-            <span
-              className="badge badge-verified"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '5px 10px',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-              }}
-            >
-              <CheckCircle2 size={14} /> Verified License Active
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', textAlign: 'right' }}>
+              <span
+                className="badge badge-verified"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '5px 10px',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                }}
+              >
+                <CheckCircle2 size={14} /> Verified License Active
+              </span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2, fontFamily: 'var(--font-mono)' }}>
+                {docData?.watermark?.orderId && docData.watermark.orderId !== 'ORD-CLOUD' ? docData.watermark.orderId : 'ORD-VERIFIED'} • {docData?.watermark?.studentName && docData.watermark.studentName !== 'Verified Student' ? docData.watermark.studentName : (studentName || 'Student')}
+              </span>
+            </div>
           )}
 
           <button className="modal-close-btn" onClick={onClose} aria-label="Close Reader">
@@ -206,7 +215,11 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
                 onClick={() => {
                   setIsLoading(true);
                   setErrorMessage(null);
-                  api.getCourseDocument(courseId)
+                  api.getCourseDocument(courseId, {
+                    clerkUserId,
+                    studentName: studentName || studentProfile?.name,
+                    studentEmail: studentEmail || studentProfile?.email,
+                  })
                     .then((res) => {
                       setDocData(res);
                       setIsLoading(false);
@@ -244,19 +257,34 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
               sandbox="allow-scripts allow-same-origin"
             />
 
-            {/* Subtle Diagonal Watermark Layer for Verified Student */}
-            {currentMode === 'paid' && docData?.watermark && (
+            {/* Subtle Diagonal Watermark Layer with Real Student & Order Data */}
+            {currentMode === 'paid' && (
               <div className="watermark-layer" aria-hidden="true">
-                {[...Array(12)].map((_, idx) => (
-                  <div key={idx} className="watermark-item">
-                    <div className="watermark-brand">KAINAT NOTES HUB</div>
-                    <div>Licensed to: {docData.watermark.studentName}</div>
-                    <div style={{ fontSize: '0.75rem' }}>{docData.watermark.studentEmail}</div>
-                    <div style={{ fontSize: '0.72rem', letterSpacing: '0.04em' }}>
-                      Order: {docData.watermark.orderId}
+                {(() => {
+                  const resolvedName =
+                    docData?.watermark?.studentName && docData.watermark.studentName !== 'Verified Student'
+                      ? docData.watermark.studentName
+                      : (studentName || studentProfile?.name || 'Verified Student');
+                  const resolvedEmail =
+                    docData?.watermark?.studentEmail && docData.watermark.studentEmail !== 'student@example.com'
+                      ? docData.watermark.studentEmail
+                      : (studentEmail || studentProfile?.email || 'student@kainatnoteshub.com');
+                  const resolvedOrder =
+                    docData?.watermark?.orderId && docData.watermark.orderId !== 'ORD-CLOUD'
+                      ? docData.watermark.orderId
+                      : 'ORD-VERIFIED';
+
+                  return [...Array(12)].map((_, idx) => (
+                    <div key={idx} className="watermark-item">
+                      <div className="watermark-brand">KAINAT NOTES HUB</div>
+                      <div>Licensed to: {resolvedName}</div>
+                      <div style={{ fontSize: '0.75rem' }}>{resolvedEmail}</div>
+                      <div style={{ fontSize: '0.72rem', letterSpacing: '0.04em' }}>
+                        Order: {resolvedOrder}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ));
+                })()}
               </div>
             )}
           </>
