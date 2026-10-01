@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // Courses collection: public read, write for course management
+    match /courses/{courseId} {
+      allow read: if true;
+      allow write: if isValidId(courseId);
+    }
+
+    // Settings collection: public read, write for site configuration
+    match /settings/{settingsDoc} {
+      allow read: if true;
+      allow write: if isValidId(settingsDoc);
+    }
+
+    // Orders collection: read and write orders
+    match /orders/{orderId} {
+      allow read: if true;
+      allow create, update: if isValidId(orderId);
+      allow delete: if false;
+    }
+
+    // Users collection: student profiles & purchases
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if isValidId(userId);
+    }
+
+    // Notifications collection: student order notifications
+    match /notifications/{notifId} {
+      allow read: if true;
+      allow write: if isValidId(notifId);
+    }
+  }
+}

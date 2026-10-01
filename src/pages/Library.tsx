@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { BookOpen, ShieldCheck, ShoppingBag, Clock, FileText } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
+import { db } from '../firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { Course, Order } from '../types';
 import { PdfViewerModal } from '../components/PdfViewerModal';
 
@@ -43,7 +45,17 @@ export const Library: React.FC = () => {
       setIsLoading(false);
     }
 
-    // Real-time SSE listener: When admin verifies student's order, refresh library automatically!
+    // Real-time Cloud Firestore listener for student profile and library updates across devices
+    let unsubUser: (() => void) | null = null;
+    if (clerkUserId) {
+      try {
+        unsubUser = onSnapshot(doc(db, 'users', clerkUserId), () => {
+          fetchLibraryData();
+        }, (err) => console.warn('Library listener fallback:', err));
+      } catch {}
+    }
+
+    // Real-time SSE listener if express server is reachable
     let eventSource: EventSource | null = null;
     try {
       eventSource = new EventSource('/api/events');
@@ -72,6 +84,7 @@ export const Library: React.FC = () => {
     }
 
     return () => {
+      unsubUser?.();
       eventSource?.close();
     };
   }, [isAuthenticated, clerkUserId, fetchLibraryData]);

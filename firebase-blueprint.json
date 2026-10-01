@@ -1,0 +1,122 @@
+{
+  "entities": {
+    "Course": {
+      "title": "Course",
+      "description": "Educational notes or course document",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 300 },
+        "class": { "type": "string", "maxLength": 100 },
+        "subject": { "type": "string", "maxLength": 100 },
+        "semesterOrYear": { "type": "string", "maxLength": 100 },
+        "unitNumber": { "type": "string", "maxLength": 100 },
+        "unitName": { "type": "string", "maxLength": 200 },
+        "chapterNumber": { "type": "string", "maxLength": 100 },
+        "chapterName": { "type": "string", "maxLength": 200 },
+        "topicName": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "price": { "type": "number" },
+        "coverImageUrl": { "type": "string", "maxLength": 2000000 },
+        "samplePdfUrl": { "type": "string", "maxLength": 2000 },
+        "fullPdfUrl": { "type": "string", "maxLength": 2000 },
+        "pageCount": { "type": "number" },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "class", "subject", "price", "isPublished"]
+    },
+    "SiteSettings": {
+      "title": "SiteSettings",
+      "description": "Global website contact, payment and brand settings",
+      "type": "object",
+      "properties": {
+        "siteName": { "type": "string", "maxLength": 200 },
+        "logoUrl": { "type": "string", "maxLength": 2000000 },
+        "easyPaisaNumber": { "type": "string", "maxLength": 50 },
+        "easyPaisaTitle": { "type": "string", "maxLength": 100 },
+        "whatsAppNumber": { "type": "string", "maxLength": 50 },
+        "contactEmail": { "type": "string", "maxLength": 150 },
+        "footerText": { "type": "string", "maxLength": 500 },
+        "currency": { "type": "string", "maxLength": 20 },
+        "customClasses": { "type": "array" }
+      },
+      "required": ["siteName", "easyPaisaNumber", "easyPaisaTitle"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Student notes order record with payment verification status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "clerkUserId": { "type": "string", "maxLength": 128 },
+        "studentName": { "type": "string", "maxLength": 150 },
+        "studentEmail": { "type": "string", "maxLength": 150 },
+        "courseIds": { "type": "array" },
+        "coursesSummary": { "type": "array" },
+        "totalAmount": { "type": "number" },
+        "paymentMethod": { "type": "string", "maxLength": 50 },
+        "transactionId": { "type": "string", "maxLength": 100 },
+        "paymentProofUrl": { "type": "string", "maxLength": 2000000 },
+        "status": { "type": "string", "enum": ["PENDING", "VERIFIED", "REJECTED"] },
+        "adminNotes": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "clerkUserId", "courseIds", "totalAmount", "transactionId", "status"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Student account profile and purchased course ids",
+      "type": "object",
+      "properties": {
+        "clerkUserId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 150 },
+        "email": { "type": "string", "maxLength": 150 },
+        "avatarUrl": { "type": "string", "maxLength": 2000 },
+        "purchasedCourseIds": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clerkUserId", "name", "email"]
+    },
+    "NotificationItem": {
+      "title": "NotificationItem",
+      "description": "In-app notifications sent to students regarding order status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "clerkUserId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "message": { "type": "string", "maxLength": 1000 },
+        "type": { "type": "string", "enum": ["order_verified", "order_rejected", "general"] },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "clerkUserId", "title", "message", "isRead"]
+    }
+  },
+  "firestore": {
+    "/courses/{courseId}": {
+      "schema": "Course",
+      "description": "Public catalog of educational notes"
+    },
+    "/settings/{settingsDoc}": {
+      "schema": "SiteSettings",
+      "description": "Global website settings and contact info"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Student orders with EasyPaisa payment references"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Student profiles and course enrollment licenses"
+    },
+    "/notifications/{notifId}": {
+      "schema": "NotificationItem",
+      "description": "Student notifications"
+    }
+  }
+}

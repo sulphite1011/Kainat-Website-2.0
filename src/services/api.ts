@@ -1,4 +1,17 @@
 import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  collection,
+  getDocs,
+  query,
+  where,
+  orderBy,
+} from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../firebase';
+import {
   Course,
   SiteSettings,
   CartResponse,
@@ -37,22 +50,7 @@ export const setAuthAdminToken = (token: string | null) => {
 
 export const getAuthAdminToken = () => currentAdminToken;
 
-const getHeaders = (isJson = true, overrideUserId?: string): HeadersInit => {
-  const headers: Record<string, string> = {};
-  if (isJson) {
-    headers['Content-Type'] = 'application/json';
-  }
-  const userId = overrideUserId || currentClerkUserId;
-  if (userId) {
-    headers['x-clerk-user-id'] = userId;
-  }
-  if (currentAdminToken) {
-    headers['Authorization'] = `Bearer ${currentAdminToken}`;
-  }
-  return headers;
-};
-
-// Default Fallback Data for Static Deployments (Cloudflare Pages, Vercel SPA)
+// Baseline Default Data
 const DEFAULT_SETTINGS: SiteSettings = {
   siteName: 'Kainat Notes Hub',
   logoUrl: '',
@@ -60,12 +58,12 @@ const DEFAULT_SETTINGS: SiteSettings = {
   easyPaisaTitle: 'Kainat Educational Services',
   whatsAppNumber: '0324 9059918',
   contactEmail: 'support@kainatnoteshub.com',
-  footerText: '© 2026 Kainat Notes Hub. All Rights Reserved. Verified Educational Notes.',
+  footerText: '© 2026 Kainat Notes Hub. All Rights Reserved. Verified Educational Notes for Board Exams.',
   currency: 'PKR',
   customClasses: ['Matric 9th', 'Matric 10th', 'FSc Pre-Medical', 'FSc Pre-Engineering', 'ICS', 'I.Com', 'BSc / BS'],
 };
 
-const DEFAULT_COURSES: Course[] = [
+const INITIAL_COURSES: Course[] = [
   {
     id: 'crs_matric9_phy_u1',
     title: 'Physics Chapter 1: Physical Quantities & Measurement',
@@ -108,6 +106,15 @@ const DEFAULT_COURSES: Course[] = [
   },
 ];
 
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string) || '');
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(file);
+  });
+}
+
 function getLocal<T>(key: string, fallback: T): T {
   try {
     const item = localStorage.getItem(key);
@@ -120,350 +127,383 @@ function getLocal<T>(key: string, fallback: T): T {
 function setLocal<T>(key: string, value: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch (e) {
-    console.warn(`Failed to save ${key} to localStorage:`, e);
-  }
-}
-
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string) || '');
-    reader.onerror = () => resolve('');
-    reader.readAsDataURL(file);
-  });
+  } catch {}
 }
 
 export const api = {
-  // Settings
+  // Settings (Synchronized globally in Firestore /settings/global)
   async getSettings(): Promise<SiteSettings> {
+    const settingsDocPath = 'settings/global';
     try {
-      const res = await fetch('/api/settings');
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        const data = await res.json();
+      const docRef = doc(db, 'settings', 'global');
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data() as SiteSettings;
         setLocal('kainat_settings', data);
         return data;
       }
-    } catch {}
-    return getLocal<SiteSettings>('kainat_settings', DEFAULT_SETTINGS);
+      // Initialize in cloud Firestore on first run
+      await setDoc(docRef, DEFAULT_SETTINGS);
+      setLocal('kainat_settings', DEFAULT_SETTINGS);
+      return DEFAULT_SETTINGS;
+    } catch (err) {
+      console.warn('Firestore getSettings fallback to cache:', err);
+      return getLocal<SiteSettings>('kainat_settings', DEFAULT_SETTINGS);
+    }
   },
 
   async updateSettings(settings: Partial<SiteSettings>): Promise<{ success: boolean; settings: SiteSettings }> {
+    const path = 'settings/global';
     try {
-      const res = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: getHeaders(true),
-        body: JSON.stringify(settings),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        const data = await res.json();
-        setLocal('kainat_settings', data.settings);
-        return data;
-      }
-    } catch {}
-    const current = getLocal<SiteSettings>('kainat_settings', DEFAULT_SETTINGS);
-    const updated = { ...current, ...settings };
-    setLocal('kainat_settings', updated);
-    return { success: true, settings: updated };
+      const current = await this.getSettings();
+      const updated: SiteSettings = {
+        ...current,
+        ...settings,
+        customClasses: settings.customClasses || current.customClasses || DEFAULT_SETTINGS.customClasses,
+      };
+      await setDoc(doc(db, 'settings', 'global'), updated, { merge: true });
+      setLocal('kainat_settings', updated);
+      return { success: true, settings: updated };
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, path);
+    }
   },
 
   async addCustomClass(className: string): Promise<{ success: boolean; settings: SiteSettings; className: string }> {
+    const path = 'settings/global';
     try {
-      const res = await fetch('/api/settings/classes', {
-        method: 'POST',
-        headers: getHeaders(true),
-        body: JSON.stringify({ className }),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        const data = await res.json();
-        setLocal('kainat_settings', data.settings);
-        return data;
+      const current = await this.getSettings();
+      const classes = current.customClasses || DEFAULT_SETTINGS.customClasses || [];
+      if (!classes.includes(className)) {
+        const updatedClasses = [...classes, className];
+        await updateDoc(doc(db, 'settings', 'global'), {
+          customClasses: updatedClasses,
+        });
+        current.customClasses = updatedClasses;
+        setLocal('kainat_settings', current);
       }
-    } catch {}
-    const current = getLocal<SiteSettings>('kainat_settings', DEFAULT_SETTINGS);
-    const existing = current.customClasses || [];
-    if (!existing.includes(className)) {
-      current.customClasses = [...existing, className];
-      setLocal('kainat_settings', current);
+      return { success: true, settings: current, className };
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, path);
     }
-    return { success: true, settings: current, className };
   },
 
   async deleteCustomClass(className: string): Promise<{ success: boolean; settings: SiteSettings }> {
+    const path = 'settings/global';
     try {
-      const res = await fetch(`/api/settings/classes/${encodeURIComponent(className)}`, {
-        method: 'DELETE',
-        headers: getHeaders(true),
+      const current = await this.getSettings();
+      const classes = current.customClasses || DEFAULT_SETTINGS.customClasses || [];
+      const updatedClasses = classes.filter((c) => c !== className);
+      await updateDoc(doc(db, 'settings', 'global'), {
+        customClasses: updatedClasses,
       });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        const data = await res.json();
-        setLocal('kainat_settings', data.settings);
-        return data;
-      }
-    } catch {}
-    const current = getLocal<SiteSettings>('kainat_settings', DEFAULT_SETTINGS);
-    current.customClasses = (current.customClasses || []).filter((c) => c !== className);
-    setLocal('kainat_settings', current);
-    return { success: true, settings: current };
+      current.customClasses = updatedClasses;
+      setLocal('kainat_settings', current);
+      return { success: true, settings: current };
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, path);
+    }
   },
 
-  // Courses
+  // Courses (Synchronized globally in Firestore /courses)
   async getCourses(): Promise<Course[]> {
+    const path = 'courses';
     try {
-      const res = await fetch('/api/courses', {
-        headers: getHeaders(false),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        const data = await res.json();
-        setLocal('kainat_courses', data);
-        return data;
+      const colRef = collection(db, 'courses');
+      const snap = await getDocs(colRef);
+      if (snap.empty) {
+        // Seed initial courses to cloud so new databases have starter notes
+        for (const course of INITIAL_COURSES) {
+          await setDoc(doc(db, 'courses', course.id), course);
+        }
+        setLocal('kainat_courses', INITIAL_COURSES);
+        return INITIAL_COURSES;
       }
-    } catch {}
-    return getLocal<Course[]>('kainat_courses', DEFAULT_COURSES);
+      const courses: Course[] = [];
+      snap.forEach((d) => courses.push(d.data() as Course));
+      // Sort by newest first
+      courses.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setLocal('kainat_courses', courses);
+      return courses;
+    } catch (err) {
+      console.warn('Firestore getCourses fallback to local cache:', err);
+      return getLocal<Course[]>('kainat_courses', INITIAL_COURSES);
+    }
   },
 
   async getCourse(id: string): Promise<Course> {
+    const path = `courses/${id}`;
     try {
-      const res = await fetch(`/api/courses/${id}`, {
-        headers: getHeaders(false),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        return await res.json();
+      const docRef = doc(db, 'courses', id);
+      const snap = await getDoc(docRef);
+      if (!snap.exists()) {
+        throw new Error('Course not found');
       }
-    } catch {}
-    const courses = getLocal<Course[]>('kainat_courses', DEFAULT_COURSES);
-    const found = courses.find((c) => c.id === id);
-    if (!found) throw new Error('Course not found');
-    return found;
+      return snap.data() as Course;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.GET, path);
+    }
   },
 
   async createCourse(courseData: Partial<Course>): Promise<{ success: boolean; course: Course }> {
+    const newId = courseData.id || 'crs_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
+    const path = `courses/${newId}`;
     try {
-      const res = await fetch('/api/courses', {
-        method: 'POST',
-        headers: getHeaders(true),
-        body: JSON.stringify(courseData),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        const data = await res.json();
-        const courses = getLocal<Course[]>('kainat_courses', DEFAULT_COURSES);
-        courses.unshift(data.course);
-        setLocal('kainat_courses', courses);
-        return data;
-      }
-    } catch {}
-    const courses = getLocal<Course[]>('kainat_courses', DEFAULT_COURSES);
-    const newCourse: Course = {
-      id: 'crs_' + Math.random().toString(36).substring(2, 9),
-      title: courseData.title || 'Untitled Notes',
-      class: courseData.class || 'General',
-      subject: courseData.subject || 'General',
-      unitNumber: courseData.unitNumber || '',
-      unitName: courseData.unitName || '',
-      chapterNumber: courseData.chapterNumber || '',
-      chapterName: courseData.chapterName || '',
-      topicName: courseData.topicName || '',
-      description: courseData.description || '',
-      price: Number(courseData.price) || 0,
-      coverImageUrl: courseData.coverImageUrl || '',
-      samplePdfUrl: courseData.samplePdfUrl || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-      fullPdfUrl: courseData.fullPdfUrl || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-      pageCount: Number(courseData.pageCount) || 10,
-      isPublished: courseData.isPublished !== false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    courses.unshift(newCourse);
-    setLocal('kainat_courses', courses);
-    return { success: true, course: newCourse };
+      const newCourse: Course = {
+        id: newId,
+        title: (courseData.title || 'Untitled Notes').trim(),
+        class: (courseData.class || 'General').trim(),
+        subject: (courseData.subject || 'General').trim(),
+        semesterOrYear: courseData.semesterOrYear || '',
+        unitNumber: courseData.unitNumber || '',
+        unitName: courseData.unitName || '',
+        chapterNumber: courseData.chapterNumber || '',
+        chapterName: courseData.chapterName || '',
+        topicName: courseData.topicName || '',
+        description: courseData.description || '',
+        price: Number(courseData.price) || 0,
+        coverImageUrl: courseData.coverImageUrl || '',
+        samplePdfUrl: courseData.samplePdfUrl || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+        fullPdfUrl: courseData.fullPdfUrl || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+        pageCount: Number(courseData.pageCount) || 10,
+        isPublished: courseData.isPublished !== false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await setDoc(doc(db, 'courses', newId), newCourse);
+
+      // Update local cache
+      const cached = getLocal<Course[]>('kainat_courses', []);
+      cached.unshift(newCourse);
+      setLocal('kainat_courses', cached);
+
+      return { success: true, course: newCourse };
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, path);
+    }
   },
 
   async updateCourse(id: string, courseData: Partial<Course>): Promise<{ success: boolean; course: Course }> {
+    const path = `courses/${id}`;
     try {
-      const res = await fetch(`/api/courses/${id}`, {
-        method: 'PUT',
-        headers: getHeaders(true),
-        body: JSON.stringify(courseData),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        const data = await res.json();
-        const courses = getLocal<Course[]>('kainat_courses', DEFAULT_COURSES);
-        const idx = courses.findIndex((c) => c.id === id);
-        if (idx !== -1) {
-          courses[idx] = data.course;
-          setLocal('kainat_courses', courses);
-        }
-        return data;
+      const existing = await this.getCourse(id);
+      const updated: Course = {
+        ...existing,
+        ...courseData,
+        updatedAt: new Date().toISOString(),
+      };
+      await setDoc(doc(db, 'courses', id), updated, { merge: true });
+
+      // Update local cache
+      const cached = getLocal<Course[]>('kainat_courses', []);
+      const idx = cached.findIndex((c) => c.id === id);
+      if (idx !== -1) {
+        cached[idx] = updated;
+        setLocal('kainat_courses', cached);
       }
-    } catch {}
-    const courses = getLocal<Course[]>('kainat_courses', DEFAULT_COURSES);
-    const idx = courses.findIndex((c) => c.id === id);
-    if (idx === -1) throw new Error('Course not found');
-    courses[idx] = { ...courses[idx], ...courseData, updatedAt: new Date().toISOString() };
-    setLocal('kainat_courses', courses);
-    return { success: true, course: courses[idx] };
+
+      return { success: true, course: updated };
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, path);
+    }
   },
 
   async deleteCourse(id: string): Promise<{ success: boolean; deletedCourseId: string }> {
+    const path = `courses/${id}`;
     try {
-      const res = await fetch(`/api/courses/${id}`, {
-        method: 'DELETE',
-        headers: getHeaders(true),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        const data = await res.json();
-        const courses = getLocal<Course[]>('kainat_courses', DEFAULT_COURSES).filter((c) => c.id !== id);
-        setLocal('kainat_courses', courses);
-        return data;
-      }
-    } catch {}
-    const courses = getLocal<Course[]>('kainat_courses', DEFAULT_COURSES).filter((c) => c.id !== id);
-    setLocal('kainat_courses', courses);
-    return { success: true, deletedCourseId: id };
+      await deleteDoc(doc(db, 'courses', id));
+      const cached = getLocal<Course[]>('kainat_courses', []).filter((c) => c.id !== id);
+      setLocal('kainat_courses', cached);
+      return { success: true, deletedCourseId: id };
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, path);
+    }
   },
 
   // Protected PDF Document
   async getCourseDocument(courseId: string): Promise<DocumentResponse> {
     try {
-      const res = await fetch(`/api/courses/${courseId}/document`, {
-        headers: getHeaders(false),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        return await res.json();
-      }
-    } catch {}
-    const courses = getLocal<Course[]>('kainat_courses', DEFAULT_COURSES);
-    const course = courses.find((c) => c.id === courseId);
-    return {
-      success: true,
-      courseId,
-      title: course?.title || 'Notes Document',
-      class: course?.class || 'General',
-      subject: course?.subject || 'Notes',
-      fullPdfUrl: course?.fullPdfUrl || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-      samplePdfUrl: course?.samplePdfUrl || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-      watermark: {
-        brand: 'Kainat Notes Hub',
-        studentName: 'Verified Student',
-        studentEmail: 'student@example.com',
-        orderId: 'ORD-DEMO',
-        licenseId: 'LIC-' + Math.random().toString(36).substring(2, 8).toUpperCase(),
-        timestamp: new Date().toISOString(),
-      },
-    };
+      const course = await this.getCourse(courseId);
+      return {
+        success: true,
+        courseId,
+        title: course.title,
+        class: course.class,
+        subject: course.subject,
+        fullPdfUrl: course.fullPdfUrl || course.samplePdfUrl,
+        samplePdfUrl: course.samplePdfUrl,
+        watermark: {
+          brand: 'Kainat Notes Hub',
+          studentName: 'Verified Student',
+          studentEmail: 'student@example.com',
+          orderId: 'ORD-CLOUD',
+          licenseId: 'LIC-' + Math.random().toString(36).substring(2, 8).toUpperCase(),
+          timestamp: new Date().toISOString(),
+        },
+      };
+    } catch {
+      return {
+        success: true,
+        courseId,
+        title: 'Notes Document',
+        class: 'General',
+        subject: 'Notes',
+        fullPdfUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+        samplePdfUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+        watermark: {
+          brand: 'Kainat Notes Hub',
+          studentName: 'Verified Student',
+          studentEmail: 'student@example.com',
+          orderId: 'ORD-CLOUD',
+          licenseId: 'LIC-DEFAULT',
+          timestamp: new Date().toISOString(),
+        },
+      };
+    }
   },
 
-  // Student Sync & Library
-  async syncStudent(profile: { clerkUserId: string; name: string; email: string; avatarUrl: string }): Promise<{ success: boolean; user: UserProfile }> {
+  // Student Sync & Library (Synchronized in Firestore /users/{userId})
+  async syncStudent(profile: {
+    clerkUserId: string;
+    name: string;
+    email: string;
+    avatarUrl: string;
+  }): Promise<{ success: boolean; user: UserProfile }> {
+    const userId = profile.clerkUserId;
+    const path = `users/${userId}`;
     try {
-      const res = await fetch('/api/sync', {
-        method: 'POST',
-        headers: getHeaders(true),
-        body: JSON.stringify(profile),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        return await res.json();
+      const docRef = doc(db, 'users', userId);
+      const snap = await getDoc(docRef);
+      let user: UserProfile;
+      if (snap.exists()) {
+        const existing = snap.data() as UserProfile;
+        user = {
+          ...existing,
+          name: profile.name || existing.name,
+          email: profile.email || existing.email,
+          avatarUrl: profile.avatarUrl || existing.avatarUrl,
+          updatedAt: new Date().toISOString(),
+        };
+        await updateDoc(docRef, {
+          name: user.name,
+          email: user.email,
+          avatarUrl: user.avatarUrl,
+          updatedAt: user.updatedAt,
+        });
+      } else {
+        user = {
+          clerkUserId: userId,
+          name: profile.name || 'Student',
+          email: profile.email || '',
+          avatarUrl: profile.avatarUrl || '',
+          purchasedCourseIds: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        await setDoc(docRef, user);
       }
-    } catch {}
-    const users = getLocal<UserProfile[]>('kainat_users', []);
-    let user = users.find((u) => u.clerkUserId === profile.clerkUserId);
-    if (!user) {
-      user = {
-        clerkUserId: profile.clerkUserId,
-        name: profile.name,
-        email: profile.email,
-        avatarUrl: profile.avatarUrl,
+      return { success: true, user };
+    } catch (err) {
+      console.warn('Firestore syncStudent fallback:', err);
+      const user: UserProfile = {
+        clerkUserId: userId,
+        name: profile.name || 'Student',
+        email: profile.email || '',
+        avatarUrl: profile.avatarUrl || '',
         purchasedCourseIds: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      users.push(user);
-    } else {
-      user.updatedAt = new Date().toISOString();
-      if (profile.name) user.name = profile.name;
-      if (profile.avatarUrl) user.avatarUrl = profile.avatarUrl;
+      return { success: true, user };
     }
-    setLocal('kainat_users', users);
-    return { success: true, user };
   },
 
   async getStudentLibrary(): Promise<{ clerkUserId: string; studentName: string; courses: Course[] }> {
+    const userId = currentClerkUserId;
+    if (!userId) {
+      return { clerkUserId: '', studentName: 'Guest', courses: [] };
+    }
     try {
-      const res = await fetch('/api/library', {
-        headers: getHeaders(false),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        return await res.json();
+      const userSnap = await getDoc(doc(db, 'users', userId));
+      const user = userSnap.exists() ? (userSnap.data() as UserProfile) : null;
+      const purchasedIds = user?.purchasedCourseIds || [];
+
+      if (purchasedIds.length === 0) {
+        return {
+          clerkUserId: userId,
+          studentName: user?.name || 'Student',
+          courses: [],
+        };
       }
-    } catch {}
-    const users = getLocal<UserProfile[]>('kainat_users', []);
-    const user = users.find((u) => u.clerkUserId === currentClerkUserId);
-    const allCourses = getLocal<Course[]>('kainat_courses', DEFAULT_COURSES);
-    const enrolledIds = user?.purchasedCourseIds || [];
-    const courses = allCourses.filter((c) => enrolledIds.includes(c.id));
-    return {
-      clerkUserId: currentClerkUserId || '',
-      studentName: user?.name || 'Student',
-      courses,
-    };
+
+      const allCourses = await this.getCourses();
+      const enrolledCourses = allCourses.filter((c) => purchasedIds.includes(c.id));
+      return {
+        clerkUserId: userId,
+        studentName: user?.name || 'Student',
+        courses: enrolledCourses,
+      };
+    } catch (err) {
+      console.warn('Firestore getStudentLibrary fallback:', err);
+      return { clerkUserId: userId, studentName: 'Student', courses: [] };
+    }
   },
 
   async getStudentProfile(): Promise<UserProfile> {
-    try {
-      const res = await fetch('/api/student/me', {
-        headers: getHeaders(false),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        return await res.json();
-      }
-    } catch {}
-    const users = getLocal<UserProfile[]>('kainat_users', []);
-    const user = users.find((u) => u.clerkUserId === currentClerkUserId);
-    if (!user) throw new Error('Student profile not found');
-    return user;
+    const userId = currentClerkUserId;
+    if (!userId) throw new Error('Not authenticated');
+    const snap = await getDoc(doc(db, 'users', userId));
+    if (!snap.exists()) throw new Error('Student profile not found');
+    return snap.data() as UserProfile;
   },
 
-  async getNotifications(): Promise<NotificationItem[]> {
+  async getStudents(): Promise<UserProfile[]> {
+    const path = 'users';
     try {
-      const res = await fetch('/api/notifications', {
-        headers: getHeaders(false),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        return await res.json();
-      }
-    } catch {}
-    return getLocal<NotificationItem[]>('kainat_notifications', []);
+      const snap = await getDocs(collection(db, 'users'));
+      const students: UserProfile[] = [];
+      snap.forEach((d) => students.push(d.data() as UserProfile));
+      return students;
+    } catch (err) {
+      console.warn('Firestore getStudents fallback:', err);
+      return [];
+    }
+  },
+
+  // Notifications (Firestore /notifications)
+  async getNotifications(): Promise<NotificationItem[]> {
+    const userId = currentClerkUserId;
+    if (!userId) return [];
+    const path = 'notifications';
+    try {
+      const q = query(collection(db, 'notifications'), where('clerkUserId', '==', userId));
+      const snap = await getDocs(q);
+      const items: NotificationItem[] = [];
+      snap.forEach((d) => items.push(d.data() as NotificationItem));
+      items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      return items;
+    } catch (err) {
+      console.warn('Firestore getNotifications fallback:', err);
+      return [];
+    }
   },
 
   async markNotificationRead(id: string): Promise<{ success: boolean }> {
+    const path = `notifications/${id}`;
     try {
-      const res = await fetch(`/api/notifications/${id}/read`, {
-        method: 'POST',
-        headers: getHeaders(false),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        return await res.json();
-      }
-    } catch {}
-    const notifs = getLocal<NotificationItem[]>('kainat_notifications', []);
-    const found = notifs.find((n) => n.id === id);
-    if (found) found.isRead = true;
-    setLocal('kainat_notifications', notifs);
-    return { success: true };
+      await updateDoc(doc(db, 'notifications', id), { isRead: true });
+      return { success: true };
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, path);
+    }
   },
 
   // Cart
   async getCart(userId?: string): Promise<CartResponse> {
-    try {
-      const res = await fetch('/api/cart', {
-        headers: getHeaders(false, userId),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        return await res.json();
-      }
-    } catch {}
-    const cartIds = getLocal<string[]>('kainat_cart_items', []);
-    const allCourses = getLocal<Course[]>('kainat_courses', DEFAULT_COURSES);
+    const activeUser = userId || currentClerkUserId || 'guest';
+    const cartKey = `kainat_cart_${activeUser}`;
+    const cartIds = getLocal<string[]>(cartKey, []);
+    const allCourses = await this.getCourses();
     const items: CartItemDetail[] = allCourses
       .filter((c) => cartIds.includes(c.id))
       .map((c) => ({
@@ -477,7 +517,7 @@ export const api = {
       }));
     const totalAmount = items.reduce((sum, item) => sum + item.price, 0);
     return {
-      clerkUserId: userId || currentClerkUserId || '',
+      clerkUserId: activeUser,
       items,
       totalAmount,
       totalItems: items.length,
@@ -485,194 +525,215 @@ export const api = {
   },
 
   async addToCart(courseId: string): Promise<{ success: boolean }> {
-    try {
-      const res = await fetch('/api/cart/items', {
-        method: 'POST',
-        headers: getHeaders(true),
-        body: JSON.stringify({ courseId }),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        return await res.json();
-      }
-    } catch {}
-    const cartIds = getLocal<string[]>('kainat_cart_items', []);
+    const activeUser = currentClerkUserId || 'guest';
+    const cartKey = `kainat_cart_${activeUser}`;
+    const cartIds = getLocal<string[]>(cartKey, []);
     if (!cartIds.includes(courseId)) {
       cartIds.push(courseId);
-      setLocal('kainat_cart_items', cartIds);
+      setLocal(cartKey, cartIds);
     }
     return { success: true };
   },
 
   async removeFromCart(courseId: string): Promise<{ success: boolean }> {
-    try {
-      const res = await fetch(`/api/cart/items/${courseId}`, {
-        method: 'DELETE',
-        headers: getHeaders(true),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        return await res.json();
-      }
-    } catch {}
-    const cartIds = getLocal<string[]>('kainat_cart_items', []).filter((id) => id !== courseId);
-    setLocal('kainat_cart_items', cartIds);
+    const activeUser = currentClerkUserId || 'guest';
+    const cartKey = `kainat_cart_${activeUser}`;
+    const cartIds = getLocal<string[]>(cartKey, []).filter((id) => id !== courseId);
+    setLocal(cartKey, cartIds);
     return { success: true };
   },
 
   async clearCart(): Promise<{ success: boolean }> {
-    try {
-      const res = await fetch('/api/cart/clear', {
-        method: 'POST',
-        headers: getHeaders(true),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        return await res.json();
-      }
-    } catch {}
-    setLocal('kainat_cart_items', []);
+    const activeUser = currentClerkUserId || 'guest';
+    const cartKey = `kainat_cart_${activeUser}`;
+    setLocal(cartKey, []);
     return { success: true };
   },
 
-  // Orders
-  async createOrder(data: { courseIds: string[]; transactionId: string; paymentProofUrl: string }): Promise<{ success: boolean; order: Order }> {
+  // Orders (Synchronized in Firestore /orders)
+  async createOrder(data: {
+    courseIds: string[];
+    transactionId: string;
+    paymentProofUrl: string;
+  }): Promise<{ success: boolean; order: Order }> {
+    const orderId = 'ORD-' + Math.floor(100000 + Math.random() * 900000);
+    const path = `orders/${orderId}`;
     try {
-      const res = await fetch('/api/orders', {
-        method: 'POST',
-        headers: getHeaders(true),
-        body: JSON.stringify(data),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        const orderRes = await res.json();
-        const orders = getLocal<Order[]>('kainat_orders', []);
-        orders.unshift(orderRes.order);
-        setLocal('kainat_orders', orders);
-        return orderRes;
+      const allCourses = await this.getCourses();
+      const orderedCourses = allCourses.filter((c) => data.courseIds.includes(c.id));
+      const totalAmount = orderedCourses.reduce((sum, c) => sum + c.price, 0);
+
+      const coursesSummary: OrderItemSummary[] = orderedCourses.map((c) => ({
+        id: c.id,
+        title: c.title,
+        price: c.price,
+        class: c.class,
+      }));
+
+      // Find student info if available
+      let studentName = 'Student';
+      let studentEmail = '';
+      if (currentClerkUserId) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', currentClerkUserId));
+          if (userDoc.exists()) {
+            const u = userDoc.data() as UserProfile;
+            studentName = u.name || studentName;
+            studentEmail = u.email || studentEmail;
+          }
+        } catch {}
       }
-    } catch {}
-    const allCourses = getLocal<Course[]>('kainat_courses', DEFAULT_COURSES);
-    const orderedCourses = allCourses.filter((c) => data.courseIds.includes(c.id));
-    const totalAmount = orderedCourses.reduce((sum, c) => sum + c.price, 0);
 
-    const coursesSummary: OrderItemSummary[] = orderedCourses.map((c) => ({
-      id: c.id,
-      title: c.title,
-      price: c.price,
-      class: c.class,
-    }));
+      const newOrder: Order = {
+        id: orderId,
+        clerkUserId: currentClerkUserId || 'guest',
+        studentName,
+        studentEmail,
+        courseIds: data.courseIds,
+        coursesSummary,
+        totalAmount,
+        paymentMethod: 'EasyPaisa',
+        transactionId: data.transactionId.trim(),
+        paymentProofUrl: data.paymentProofUrl || '',
+        status: 'PENDING',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
 
-    const newOrder: Order = {
-      id: 'ORD-' + Math.floor(100000 + Math.random() * 900000),
-      clerkUserId: currentClerkUserId || 'guest',
-      studentName: 'Student',
-      studentEmail: 'student@example.com',
-      courseIds: data.courseIds,
-      coursesSummary,
-      totalAmount,
-      paymentMethod: 'EasyPaisa',
-      transactionId: data.transactionId,
-      paymentProofUrl: data.paymentProofUrl,
-      status: 'PENDING',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+      await setDoc(doc(db, 'orders', orderId), newOrder);
 
-    const orders = getLocal<Order[]>('kainat_orders', []);
-    orders.unshift(newOrder);
-    setLocal('kainat_orders', orders);
-    setLocal('kainat_cart_items', []);
-    return { success: true, order: newOrder };
+      // Clear student cart
+      await this.clearCart();
+
+      return { success: true, order: newOrder };
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, path);
+    }
   },
 
   async getMyOrders(): Promise<Order[]> {
+    const userId = currentClerkUserId;
+    if (!userId) return [];
+    const path = 'orders';
     try {
-      const res = await fetch('/api/orders/my', {
-        headers: getHeaders(false),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        return await res.json();
-      }
-    } catch {}
-    const orders = getLocal<Order[]>('kainat_orders', []);
-    if (!currentClerkUserId) return orders;
-    return orders.filter((o) => o.clerkUserId === currentClerkUserId);
+      const q = query(collection(db, 'orders'), where('clerkUserId', '==', userId));
+      const snap = await getDocs(q);
+      const orders: Order[] = [];
+      snap.forEach((d) => orders.push(d.data() as Order));
+      orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      return orders;
+    } catch (err) {
+      console.warn('Firestore getMyOrders fallback:', err);
+      return [];
+    }
   },
 
   async getAllOrders(): Promise<Order[]> {
+    const path = 'orders';
     try {
-      const res = await fetch('/api/orders', {
-        headers: getHeaders(false),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        const data = await res.json();
-        setLocal('kainat_orders', data);
-        return data;
-      }
-    } catch {}
-    return getLocal<Order[]>('kainat_orders', []);
+      const snap = await getDocs(collection(db, 'orders'));
+      const orders: Order[] = [];
+      snap.forEach((d) => orders.push(d.data() as Order));
+      orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      return orders;
+    } catch (err) {
+      console.warn('Firestore getAllOrders fallback:', err);
+      return [];
+    }
   },
 
   async verifyOrder(orderId: string, adminNotes?: string): Promise<{ success: boolean; order: Order }> {
+    const path = `orders/${orderId}`;
     try {
-      const res = await fetch(`/api/orders/${orderId}/verify`, {
-        method: 'POST',
-        headers: getHeaders(true),
-        body: JSON.stringify({ adminNotes }),
+      const orderRef = doc(db, 'orders', orderId);
+      const orderSnap = await getDoc(orderRef);
+      if (!orderSnap.exists()) throw new Error('Order not found');
+
+      const order = orderSnap.data() as Order;
+      const updatedOrder: Order = {
+        ...order,
+        status: 'VERIFIED',
+        adminNotes: adminNotes || '',
+        updatedAt: new Date().toISOString(),
+      };
+
+      await updateDoc(orderRef, {
+        status: 'VERIFIED',
+        adminNotes: adminNotes || '',
+        updatedAt: updatedOrder.updatedAt,
       });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        const data = await res.json();
-        const orders = getLocal<Order[]>('kainat_orders', []);
-        const idx = orders.findIndex((o) => o.id === orderId);
-        if (idx !== -1) {
-          orders[idx] = data.order;
-          setLocal('kainat_orders', orders);
+
+      // Grant course licenses to the student in Firestore
+      if (order.clerkUserId && order.clerkUserId !== 'guest') {
+        const userRef = doc(db, 'users', order.clerkUserId);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const user = userSnap.data() as UserProfile;
+          const mergedCourses = Array.from(new Set([...(user.purchasedCourseIds || []), ...order.courseIds]));
+          await updateDoc(userRef, {
+            purchasedCourseIds: mergedCourses,
+            updatedAt: new Date().toISOString(),
+          });
         }
-        return data;
+
+        // Add a notification for the student
+        const notifId = 'notif_' + Math.random().toString(36).substring(2, 9);
+        await setDoc(doc(db, 'notifications', notifId), {
+          id: notifId,
+          clerkUserId: order.clerkUserId,
+          title: 'Payment Verified! Notes Available',
+          message: `Your payment for order #${orderId} (Rs. ${order.totalAmount}) has been verified. The notes are now in your library!`,
+          type: 'order_verified',
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        } as NotificationItem);
       }
-    } catch {}
-    const orders = getLocal<Order[]>('kainat_orders', []);
-    const order = orders.find((o) => o.id === orderId);
-    if (!order) throw new Error('Order not found');
-    order.status = 'VERIFIED';
-    order.adminNotes = adminNotes || '';
-    order.updatedAt = new Date().toISOString();
-    setLocal('kainat_orders', orders);
 
-    // Enroll user in courses
-    const users = getLocal<UserProfile[]>('kainat_users', []);
-    const user = users.find((u) => u.clerkUserId === order.clerkUserId);
-    if (user) {
-      user.purchasedCourseIds = Array.from(new Set([...(user.purchasedCourseIds || []), ...order.courseIds]));
-      setLocal('kainat_users', users);
+      return { success: true, order: updatedOrder };
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, path);
     }
-
-    return { success: true, order };
   },
 
   async rejectOrder(orderId: string, reason: string): Promise<{ success: boolean; order: Order }> {
+    const path = `orders/${orderId}`;
     try {
-      const res = await fetch(`/api/orders/${orderId}/reject`, {
-        method: 'POST',
-        headers: getHeaders(true),
-        body: JSON.stringify({ reason }),
+      const orderRef = doc(db, 'orders', orderId);
+      const orderSnap = await getDoc(orderRef);
+      if (!orderSnap.exists()) throw new Error('Order not found');
+
+      const order = orderSnap.data() as Order;
+      const updatedOrder: Order = {
+        ...order,
+        status: 'REJECTED',
+        adminNotes: reason,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await updateDoc(orderRef, {
+        status: 'REJECTED',
+        adminNotes: reason,
+        updatedAt: updatedOrder.updatedAt,
       });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        const data = await res.json();
-        const orders = getLocal<Order[]>('kainat_orders', []);
-        const idx = orders.findIndex((o) => o.id === orderId);
-        if (idx !== -1) {
-          orders[idx] = data.order;
-          setLocal('kainat_orders', orders);
-        }
-        return data;
+
+      // Send rejection notification to student
+      if (order.clerkUserId && order.clerkUserId !== 'guest') {
+        const notifId = 'notif_' + Math.random().toString(36).substring(2, 9);
+        await setDoc(doc(db, 'notifications', notifId), {
+          id: notifId,
+          clerkUserId: order.clerkUserId,
+          title: 'Order Status Update',
+          message: `Your order #${orderId} was rejected. Reason: ${reason}. Please contact WhatsApp support if you have questions.`,
+          type: 'order_rejected',
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        } as NotificationItem);
       }
-    } catch {}
-    const orders = getLocal<Order[]>('kainat_orders', []);
-    const order = orders.find((o) => o.id === orderId);
-    if (!order) throw new Error('Order not found');
-    order.status = 'REJECTED';
-    order.adminNotes = reason;
-    order.updatedAt = new Date().toISOString();
-    setLocal('kainat_orders', orders);
-    return { success: true, order };
+
+      return { success: true, order: updatedOrder };
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, path);
+    }
   },
 
   // Admin Auth & Stats
@@ -684,7 +745,7 @@ export const api = {
       throw new Error('Please enter admin username and password');
     }
 
-    // Try backend /api/admin/login first
+    // Try backend /api/admin/login first if express server is reachable
     try {
       const res = await fetch('/api/admin/login', {
         method: 'POST',
@@ -709,12 +770,9 @@ export const api = {
       if (err.message && (err.message.includes('Invalid admin') || err.message.includes('Unauthorized'))) {
         throw err;
       }
-      console.warn(
-        'Backend /api/admin/login unreachable or static hosting (Cloudflare/Vercel). Validating against configured environment credentials.'
-      );
     }
 
-    // Client-side fallback authentication for static hosting (Cloudflare Pages, Vercel SPA)
+    // Client-side fallback authentication for Cloudflare Pages / Vercel SPA
     const envUser = (
       (import.meta as any).env?.ADMIN_USERNAME ||
       (import.meta as any).env?.VITE_ADMIN_USERNAME ||
@@ -736,7 +794,7 @@ export const api = {
       (inputUser.toLowerCase() === 'kainat' && inputPass === 'kainat2026');
 
     if (matchesEnv || matchesFallback) {
-      const localToken = 'adm_local_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+      const localToken = 'adm_cloud_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
       setAuthAdminToken(localToken);
       setLocal('kainat_admin_token', localToken);
       setLocal('kainat_admin_user', inputUser);
@@ -748,97 +806,70 @@ export const api = {
 
   async getAdminStats(): Promise<AdminStats> {
     try {
-      const res = await fetch('/api/admin/stats', {
-        headers: getHeaders(false),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        return await res.json();
-      }
-    } catch {}
-    const courses = getLocal<Course[]>('kainat_courses', DEFAULT_COURSES);
-    const orders = getLocal<Order[]>('kainat_orders', []);
-    const students = getLocal<UserProfile[]>('kainat_users', []);
-    const verifiedOrders = orders.filter((o) => o.status === 'VERIFIED');
-    const verifiedRevenue = verifiedOrders.reduce((acc, o) => acc + (o.totalAmount || 0), 0);
-    const pendingPayments = orders.filter((o) => o.status === 'PENDING').length;
-    return {
-      verifiedRevenue,
-      pendingPayments,
-      verifiedStudents: students.length,
-      totalStudents: Math.max(students.length, 1),
-      totalCourses: courses.length,
-      publishedCourses: courses.filter((c) => c.isPublished).length,
-      totalOrders: orders.length,
-    };
+      const [courses, orders, students] = await Promise.all([
+        this.getCourses(),
+        this.getAllOrders(),
+        this.getStudents(),
+      ]);
+
+      const verifiedOrders = orders.filter((o) => o.status === 'VERIFIED');
+      const verifiedRevenue = verifiedOrders.reduce((acc, o) => acc + (o.totalAmount || 0), 0);
+      const pendingPayments = orders.filter((o) => o.status === 'PENDING').length;
+
+      return {
+        verifiedRevenue,
+        pendingPayments,
+        verifiedStudents: students.length,
+        totalStudents: Math.max(students.length, 1),
+        totalCourses: courses.length,
+        publishedCourses: courses.filter((c) => c.isPublished).length,
+        totalOrders: orders.length,
+      };
+    } catch (err) {
+      console.warn('Firestore getAdminStats fallback:', err);
+      return {
+        verifiedRevenue: 0,
+        pendingPayments: 0,
+        verifiedStudents: 0,
+        totalStudents: 0,
+        totalCourses: 0,
+        publishedCourses: 0,
+        totalOrders: 0,
+      };
+    }
   },
 
-  async getStudents(): Promise<UserProfile[]> {
-    try {
-      const res = await fetch('/api/students', {
-        headers: getHeaders(false),
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        return await res.json();
-      }
-    } catch {}
-    return getLocal<UserProfile[]>('kainat_users', []);
-  },
-
-  // Uploads
+  // Uploads (stored as fast inline web data URLs for cross-device cloud persistence)
   async uploadLogo(formData: FormData): Promise<{ success: boolean; logoUrl: string }> {
     try {
-      const res = await fetch('/api/upload/logo', {
-        method: 'POST',
-        headers: getHeaders(false),
-        body: formData,
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        return await res.json();
+      const file = formData.get('logo') as File | null;
+      if (file) {
+        const dataUrl = await fileToDataUrl(file);
+        return { success: true, logoUrl: dataUrl };
       }
     } catch {}
-    const file = formData.get('logo') as File | null;
-    if (file) {
-      const dataUrl = await fileToDataUrl(file);
-      return { success: true, logoUrl: dataUrl };
-    }
     return { success: true, logoUrl: '' };
   },
 
   async uploadCourseCover(formData: FormData): Promise<{ success: boolean; coverUrl: string }> {
     try {
-      const res = await fetch('/api/upload/course-cover', {
-        method: 'POST',
-        headers: getHeaders(false),
-        body: formData,
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        return await res.json();
+      const file = formData.get('cover') as File | null;
+      if (file) {
+        const dataUrl = await fileToDataUrl(file);
+        return { success: true, coverUrl: dataUrl };
       }
     } catch {}
-    const file = formData.get('cover') as File | null;
-    if (file) {
-      const dataUrl = await fileToDataUrl(file);
-      return { success: true, coverUrl: dataUrl };
-    }
     return { success: true, coverUrl: '' };
   },
 
   async uploadPaymentProof(formData: FormData): Promise<{ success: boolean; proofUrl: string }> {
     try {
-      const res = await fetch('/api/upload/payment-proof', {
-        method: 'POST',
-        headers: getHeaders(false),
-        body: formData,
-      });
-      if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
-        return await res.json();
+      const file = formData.get('screenshot') as File | null;
+      if (file) {
+        const dataUrl = await fileToDataUrl(file);
+        return { success: true, proofUrl: dataUrl };
       }
     } catch {}
-    const file = formData.get('screenshot') as File | null;
-    if (file) {
-      const dataUrl = await fileToDataUrl(file);
-      return { success: true, proofUrl: dataUrl };
-    }
     return { success: true, proofUrl: '' };
   },
 };

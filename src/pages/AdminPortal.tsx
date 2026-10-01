@@ -22,6 +22,8 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { api } from '../services/api';
+import { db } from '../firebase';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { Course, Order, UserProfile, AdminStats, SiteSettings } from '../types';
 import { LogoCropperModal } from '../components/LogoCropperModal';
 
@@ -172,9 +174,23 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ settings, onSettingsUp
     loadData();
   }, [loadData]);
 
-  // Real-time SSE updates for admin portal
+  // Real-time Firestore & SSE updates for admin portal across all devices
   useEffect(() => {
     if (!isAdminAuthenticated) return;
+
+    let unsubOrders: (() => void) | null = null;
+    let unsubCourses: (() => void) | null = null;
+
+    try {
+      unsubOrders = onSnapshot(collection(db, 'orders'), () => {
+        loadData();
+      }, (err) => console.warn('Admin orders listener fallback:', err));
+
+      unsubCourses = onSnapshot(collection(db, 'courses'), () => {
+        loadData();
+      }, (err) => console.warn('Admin courses listener fallback:', err));
+    } catch {}
+
     let eventSource: EventSource | null = null;
     try {
       eventSource = new EventSource('/api/events');
@@ -190,7 +206,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ settings, onSettingsUp
     } catch (err) {
       console.warn('SSE error:', err);
     }
-    return () => eventSource?.close();
+    return () => {
+      unsubOrders?.();
+      unsubCourses?.();
+      eventSource?.close();
+    };
   }, [isAdminAuthenticated, loadData, showToast]);
 
   // Order Actions

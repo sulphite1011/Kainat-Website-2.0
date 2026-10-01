@@ -12,6 +12,8 @@ import { AuthProvider } from './context/ClerkWrapper';
 import { CartProvider } from './context/CartContext';
 import { SiteSettings, Order } from './types';
 import { api } from './services/api';
+import { db } from './firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { CheckCircle2, BookOpen, X } from 'lucide-react';
 import { AuthenticateWithRedirectCallback } from '@clerk/clerk-react';
 
@@ -37,16 +39,29 @@ function AppContent() {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  // Load settings from server
+  // Load and listen to settings in real-time across all devices via Firestore
   useEffect(() => {
     api
       .getSettings()
       .then((data) => {
         if (data) setSettings(data);
       })
-      .catch((err) => console.error('Failed to load settings from server:', err));
+      .catch((err) => console.error('Failed to load settings:', err));
 
-    // Listen to real-time settings changes from SSE
+    // Real-time Cloud Firestore listener for cross-device live synchronization
+    let unsubFirestore: (() => void) | null = null;
+    try {
+      unsubFirestore = onSnapshot(doc(db, 'settings', 'global'), (snap) => {
+        if (snap.exists()) {
+          const data = snap.data() as SiteSettings;
+          setSettings(data);
+        }
+      }, (err) => {
+        console.warn('Settings listener fallback:', err);
+      });
+    } catch {}
+
+    // Listen to real-time settings changes from SSE if express backend running
     let eventSource: EventSource | null = null;
     try {
       eventSource = new EventSource('/api/events');
@@ -62,7 +77,10 @@ function AppContent() {
       // ignore
     }
 
-    return () => eventSource?.close();
+    return () => {
+      unsubFirestore?.();
+      eventSource?.close();
+    };
   }, []);
 
   const toggleTheme = () => {

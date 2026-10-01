@@ -6,6 +6,8 @@ import { EmptySection } from '../components/EmptySection';
 import { PdfViewerModal } from '../components/PdfViewerModal';
 import { Course, SiteSettings } from '../types';
 import { api } from '../services/api';
+import { db } from '../firebase';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 
 interface HomeProps {
@@ -36,7 +38,22 @@ export const Home: React.FC<HomeProps> = ({ settings }) => {
   useEffect(() => {
     fetchCourses();
 
-    // Setup Server-Sent Events listener for real-time catalog & purchase sync
+    // Real-time Cloud Firestore listener for cross-device course synchronization
+    let unsubFirestore: (() => void) | null = null;
+    try {
+      unsubFirestore = onSnapshot(collection(db, 'courses'), (snap) => {
+        if (!snap.empty) {
+          const cloudCourses: Course[] = [];
+          snap.forEach((d) => cloudCourses.push(d.data() as Course));
+          cloudCourses.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setCourses(cloudCourses);
+        }
+      }, (err) => {
+        console.warn('Courses listener fallback:', err);
+      });
+    } catch {}
+
+    // Setup Server-Sent Events listener for real-time catalog & purchase sync if backend available
     let eventSource: EventSource | null = null;
     try {
       eventSource = new EventSource('/api/events');
@@ -52,6 +69,7 @@ export const Home: React.FC<HomeProps> = ({ settings }) => {
     }
 
     return () => {
+      unsubFirestore?.();
       eventSource?.close();
     };
   }, [fetchCourses, refreshStudentProfile]);
