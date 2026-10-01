@@ -9,5 +9,14 @@
     ],
     "createdAt": "2026-09-30T15:53:40.110Z",
     "updatedAt": "2026-09-30T15:54:05.544Z"
+  },
+  {
+    "clerkUserId": "user_3K3fk1mxYhRS37UEHFSsxMgvwMl",
+    "name": "Hamad khan",
+    "email": "hamadkhan11h22@gmail.com",
+    "avatarUrl": "https://img.clerk.com/eyJ0eXBlIjoicHJveHkiLCJzcmMiOiJodHRwczovL2ltYWdlcy5jbGVyay5kZXYvb2F1dGhfZ29vZ2xlL2ltZ18zSzNmanp3V0pzZDNoUm9hektwT2lrcnE0TnUifQ",
+    "purchasedCourseIds": [],
+    "createdAt": "2026-10-01T11:16:59.101Z",
+    "updatedAt": "2026-10-01T11:24:31.756Z"
   }
 ]
